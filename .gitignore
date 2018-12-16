@@ -1,0 +1,5 @@
+.idea/
+.ipynb_checkpoints/
+Archive/
+venv/
+get-pip.py
