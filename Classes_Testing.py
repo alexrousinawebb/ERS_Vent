@@ -1,5 +1,5 @@
 import numpy as np
-import threading
+from scipy import optimize as opt
 from threading import Thread
 
 def c2k(temperature):
@@ -33,22 +33,43 @@ class Common_Constants:
         self.TcH2O = 647.096
         self.TcH2O2 = 728
 
-class Water:
-    def __init__(self, temperature):
+        # Critical pressures (kPa)
+        self.PcO2 = 5050
+        self.PcH2O = 22060
+        self.PcH2O2 = 22000
+
+class Common_Functions:
+    def compress_solver(self, z):
+        A = 0.42748 * self.Pr / self.Tr ** 2.5
+        B = 0.08664 * self.Pr / self.Tr
+
+        F = np.empty(1)
+        F[0] = z[0] ** 3 - z[0] ** 2 + (A - B - B ** 2) * z[0] - A * B
+
+        return F
+
+class Water(Common_Functions):
+    def __init__(self, temperature, pressure, xH2O):
         """
             Initializes instance of water (H2O).
 
             Arguments:
             T: Temperature of liquid in degrees Celsius
+            P: Pressure in headspace of reactor in kilopascals
+            xH2O: Mole fraction of water in liquid phase
         """
 
         self.density = None
         self.Psat = None
+        self.Pr = None
         self.cpl = None
         self.cpg = None
         self.Tr = None
         self.gamma = None
+        self.Z = None
         self.T = temperature
+        self.P = pressure
+        self.xH2O = xH2O
         self.Tref = c2k(self.T) / 1000
 
     def p_L(self):
@@ -115,12 +136,17 @@ class Water:
 
         self.Tr = c2k(self.T) / cc.TcH2O
 
-    def activity(self, xH2O):
+    def reduced_pressure(self):
+        """
+            Calculate the reduced pressure for water.
+            For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
+        """
+
+        self.Pr = self.P / cc.PcH2O
+
+    def activity(self):
         """
             Calculate the activity coefficient for water (H2O).
-
-            Arguments:
-            xH2O: Mole fraction water in liquid phase
         """
 
         Ca0 = -999.883
@@ -165,9 +191,15 @@ class Water:
 
         Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (c2k(self.T) - Ca33))))
 
-        self.gamma = np.exp(((1 - xH2O ** 2) / (cc.R * c2k(self.T))) * (
-                    Ba + Bb * (1 - 4 * xH2O) + Bc * (1 - 2 * xH2O) * (1 - 6 * xH2O) + Bd * ((1 - 2 * xH2O) ** 2) * (
-                        1 - 8 * xH2O)))
+        self.gamma = np.exp(((1 - self.xH2O ** 2) / (cc.R * c2k(self.T))) * (
+                    Ba + Bb * (1 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (1 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
+                        1 - 8 * self.xH2O)))
+
+    def compress(self):
+
+        initval = np.asarray(0.99)
+
+        self.Z = opt.fsolve(self.compress_solver, initval)
 
     def runmain(self):
         if __name__ == '__main__':
@@ -176,23 +208,32 @@ class Water:
             Thread(target=self.heat_capacity_G).start()
             Thread(target=self.p_L).start()
             Thread(target=self.reduced_tempertaure).start()
+            Thread(target=self.reduced_pressure).start()
+            Thread(target=self.activity).start()
+            Thread(target=self.compress).start()
 
-class Hydrogen_Peroxide:
-    def __init__(self, temperature):
+class Hydrogen_Peroxide(Common_Functions):
+    def __init__(self, temperature, pressure, xH2O):
         """
             Initializes instance of hydrogen peroxide (H2O2).
 
             Arguments:
             T: Temperature of liquid in degrees Celsius
+            P: Pressure in headspace in kilopascals
+            xH2O: Mole fraction water in liqid phase
         """
 
         self.density = None
         self.Psat = None
+        self.Pr = None
         self.cpl = None
         self.cpg = None
         self.Tr = None
         self.gamma = None
+        self.Z = None
         self.T = temperature
+        self.P = pressure
+        self.xH2O = xH2O
         self.Tref = c2k(self.T) / 1000
 
     def p_L(self):
@@ -258,18 +299,23 @@ class Hydrogen_Peroxide:
 
     def reduced_tempertaure(self):
         """
-            Calculate the reduced temperature for water.
+            Calculate the reduced temperature for hydrogen peroxide.
             For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
         """
 
         self.Tr = c2k(self.T) / cc.TcH2O2
 
-    def activity(self, xH2O):
+    def reduced_pressure(self):
+        """
+            Calculate the reduced pressure for hydrogen peroxide.
+            For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
+        """
+
+        self.Pr = self.P / cc.PcH2O2
+
+    def activity(self):
         """
             Calculate the activity coefficient for hydrogen peroxide (H2O).
-
-            Arguments:
-            xH2O: Mole fraction water in liquid phase
         """
 
         Ca0 = -999.883
@@ -314,9 +360,15 @@ class Hydrogen_Peroxide:
 
         Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (c2k(self.T) - Ca33))))
 
-        self.gamma = np.exp((xH2O ** 2 / (cc.R * c2k(self.T))) * (
-                    Ba + Bb * (3 - 4 * xH2O) + Bc * (1 - 2 * xH2O) * (5 - 6 * xH2O) + Bd * ((1 - 2 * xH2O) ** 2) * (
-                        7 - 8 * xH2O)))
+        self.gamma = np.exp((self.xH2O ** 2 / (cc.R * c2k(self.T))) * (
+                    Ba + Bb * (3 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (5 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
+                        7 - 8 * self.xH2O)))
+
+    def compress(self):
+
+        initval = np.asarray(0.99)
+
+        self.Z = opt.fsolve(self.compress_solver, initval)
 
     def runmain(self):
         if __name__ == '__main__':
@@ -325,19 +377,26 @@ class Hydrogen_Peroxide:
             Thread(target=self.heat_capacity_G).start()
             Thread(target=self.p_L).start()
             Thread(target=self.reduced_tempertaure).start()
+            Thread(target=self.reduced_pressure).start()
+            Thread(target=self.activity).start()
+            Thread(target=self.compress).start()
 
-class Oxygen:
-    def __init__(self, temperature):
+class Oxygen(Common_Functions):
+    def __init__(self, temperature, pressure):
         """
             Initializes instance of oxygen (O2).
 
             Arguments:
             T: Temperature of medium in degrees Celsius
+            P: Pressure in headspace in kilopascals
         """
 
         self.cpg = None
         self.Tr = None
+        self.Pr = None
+        self.Z = None
         self.T = temperature
+        self.P = pressure
         self.Tref = c2k(self.T) / 1000
 
     def heat_capacity_G(self):
@@ -361,10 +420,26 @@ class Oxygen:
 
         self.Tr = c2k(self.T) / cc.TcO2
 
+    def reduced_pressure(self):
+        """
+            Calculate the reduced pressure for oxygen.
+            For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
+        """
+
+        self.Pr = self.P / cc.PcO2
+
+    def compress(self):
+
+        initval = np.asarray(0.99)
+
+        self.Z = opt.fsolve(self.compress_solver, initval)
+
     def runmain(self):
         if __name__ == '__main__':
             Thread(target = self.heat_capacity_G).start()
             Thread(target=self.reduced_tempertaure).start()
+            Thread(target=self.reduced_pressure).start()
+            Thread(target=self.compress).start()
 
 class Common_Properties:
     def __init__(self, temperature):
@@ -407,20 +482,38 @@ class Common_Properties:
             Thread(target = self.surface_tension).start()
             Thread(target=self.enthvap).start()
 
-T = 0
+# class Initial_Conditions:
+#     def __init__(self, H2O2_mass_frac, reactor_charge, temperature, pressure_headspace, ):
+#         # Molecular weights (g/mol)
+#         self.MH2O = 18.01528
+#         self.MO2 = 31.998
+#         self. MH2O2 = 34.0147
+#
+#         # Universal constants
+#         self.R = 8.3145
+#         self.g = 9.81
+#
+#         # System properties
+#         self.Patm = 101.325
+#
+#         # Critical temperatures (K)
+#         self.TcO2 = 154.6
+#         self.TcH2O = 647.096
+#         self.TcH2O2 = 728
+
+T = 25
+P = 150
 xH2O = 0.5
 
 cc = Common_Constants()
 
-H2O = Water(T)
+H2O = Water(T, P, xH2O)
 H2O.runmain()
-H2O.activity(xH2O)
 
-H2O2 = Hydrogen_Peroxide(T)
+H2O2 = Hydrogen_Peroxide(T, P, xH2O)
 H2O2.runmain()
-H2O2.activity(xH2O)
 
-O2 = Oxygen(T)
+O2 = Oxygen(T, P)
 O2.runmain()
 
 pp = Common_Properties(T)
@@ -434,3 +527,4 @@ print('liquid heat capacity = ' + str(H2O2.cpl))
 print('liquid density = ' + str(H2O2.density))
 print('reduced temperature = ' + str(H2O2.Tr))
 print('activity = ' + str(H2O2.gamma))
+print('compressibility = ' + str(O2.Z))
