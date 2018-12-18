@@ -2,43 +2,45 @@ import numpy as np
 from scipy import optimize as opt
 from threading import Thread
 
-def c2k(temperature):
-    """
-        Convert temperature from degrees Celsius to kelvin.
-    """
-    return temperature + 273.15
+class Conversion:
+    @staticmethod
+    def c2k(temperature):
+        """
+            Convert temperature from degrees Celsius to kelvin.
+        """
+        return temperature + 273.15
 
-def g2l(volume_gal):
-    """
-        Convert volume from gallons (gal) to litres (L).
-    """
-    return volume_gal*3.78541
+    @staticmethod
+    def g2l(volume_gal):
+        """
+            Convert volume from gallons (gal) to litres (L).
+        """
+        return volume_gal*3.78541
 
 class Common_Constants:
-    def __init__(self):
         # Molecular weights (g/mol)
-        self.MH2O = 18.01528
-        self.MO2 = 31.998
-        self.MH2O2 = 34.0147
+        MH2O = 18.01528
+        MO2 = 31.998
+        MH2O2 = 34.0147
 
         # Universal constants
-        self.R = 8.3145
-        self.g = 9.81
+        R = 8.3145
+        g = 9.81
 
         # System properties
-        self.Patm = 101.325
+        Patm = 101.325
 
         # Critical temperatures (K)
-        self.TcO2 = 154.6
-        self.TcH2O = 647.096
-        self.TcH2O2 = 728
+        TcO2 = 154.6
+        TcH2O = 647.096
+        TcH2O2 = 728
 
         # Critical pressures (kPa)
-        self.PcO2 = 5050
-        self.PcH2O = 22060
-        self.PcH2O2 = 22000
+        PcO2 = 5050
+        PcH2O = 22060
+        PcH2O2 = 22000
 
-class Vessel_Parameters:
+class Vessel_Parameters(Conversion):
     def __init__(self, reactor_volume, heat_transfer_coefficient=450, aspect_ratio=1.5):
         """
             Provides access to common reactor vessel properties.
@@ -50,7 +52,7 @@ class Vessel_Parameters:
                 Ux: Reactor heat transfer coefficient in (J/(s*m**2*K))
                 VR: Reactor volume in gallons
         """
-        self.VR = g2l(reactor_volume)
+        self.VR = Conversion.g2l(reactor_volume)
         self.Ux = heat_transfer_coefficient
         self.AR = aspect_ratio
         self.D = 2 * ((self.VR * 0.001) / (2 * np.pi * self.AR)) ** (1 / 3)
@@ -96,12 +98,12 @@ class Common_Functions(Common_Constants):
         F[0] = nL * xH2O + nG * yH2O - self.ntotal * self.zH2O
         F[1] = nL * xH2O2 + nG * yH2O2 - self.ntotal * self.zH2O2
         F[2] = nL + nG - self.ntotal
-        F[3] = PH2O + PH2O2 + (ZO2 * self.nO2 * self.R * c2k(self.T)) / (self.VR - VL) - P
+        F[3] = PH2O + PH2O2 + (ZO2 * self.nO2 * self.R * Conversion.c2k(self.T)) / (self.VR - VL) - P
         F[4] = PH2O - xH2O * H2O.Psat * H2O.gamma
         F[5] = PH2O2 - xH2O2 * H2O2.Psat * H2O2.gamma
         F[6] = yH2O - PH2O / P
         F[7] = yH2O2 - PH2O2 / P
-        F[8] = yO2 - (ZO2 * self.nO2 * self.R * c2k(self.T)) / ((self.VR - VL) * P)
+        F[8] = yO2 - (ZO2 * self.nO2 * self.R * Conversion.c2k(self.T)) / ((self.VR - VL) * P)
         F[9] = xH2O + xH2O2 - yH2O - yH2O2 - yO2
         F[10] = VL - nL * ((xH2O * self.MH2O / (H2O.density * 1000)) + (xH2O2 * self.MH2O2 / (H2O2.density * 1000)))
         F[11] = ZO2 ** 3 - ZO2 ** 2 + (A - B - B ** 2) * ZO2 - A * B
@@ -142,7 +144,7 @@ class Common_Functions(Common_Constants):
 
         xO2 = 0
 
-        PO2 = self.nO2 * self.R * c2k(self.T) / VG
+        PO2 = self.nO2 * self.R * Conversion.c2k(self.T) / VG
 
         return [xH2O, xH2O2, xO2, yH2O, yH2O2, yO2, nL, nG, P, PH2O, PH2O2, PO2, VL, VG, ZO2]
 
@@ -168,7 +170,7 @@ class Water(Common_Functions):
         self.T = temperature
         self.P = pressure
         self.xH2O = xH2O
-        self.Tref = c2k(self.T) / 1000
+        self.Tref = Conversion.c2k(self.T) / 1000
 
     def p_L(self):
         """
@@ -232,7 +234,7 @@ class Water(Common_Functions):
             For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
         """
 
-        self.Tr = c2k(self.T) / self.TcH2O
+        self.Tr = Conversion.c2k(self.T) / self.TcH2O
 
     def reduced_pressure(self):
         """
@@ -270,26 +272,26 @@ class Water(Common_Functions):
         Ca23 = 0.8321514
         Ca33 = 346.2121
 
-        if c2k(self.T) > 0 and c2k(self.T) <= 317.636:
-            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (c2k(self.T) - Ca3) ** 2)))
+        if Conversion.c2k(self.T) > 0 and Conversion.c2k(self.T) <= 317.636:
+            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (Conversion.c2k(self.T) - Ca3) ** 2)))
 
-        if c2k(self.T) > 317.636 and c2k(self.T) <= 348.222:
-            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((c2k(self.T) - Ca3) ** 2))))) + (
-                        P12 * c2k(self.T) ** 2 + P11 * c2k(self.T) + P10)) / 2
+        elif Conversion.c2k(self.T) > 317.636 and Conversion.c2k(self.T) <= 348.222:
+            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((Conversion.c2k(self.T) - Ca3) ** 2))))) + (
+                        P12 * Conversion.c2k(self.T) ** 2 + P11 * Conversion.c2k(self.T) + P10)) / 2
 
-        elif c2k(self.T) > 348.222 and c2k(self.T) <= 391.463:
-            Ba = P22 * c2k(self.T) ** 2 + P21 * c2k(self.T) + P20
+        elif Conversion.c2k(self.T) > 348.222 and Conversion.c2k(self.T) <= 391.463:
+            Ba = P22 * Conversion.c2k(self.T) ** 2 + P21 * Conversion.c2k(self.T) + P20
 
         else:
             Ba = -612.9613
 
-        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((c2k(self.T) - Ca31) ** 2))))
+        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((Conversion.c2k(self.T) - Ca31) ** 2))))
 
-        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (c2k(self.T) - Ca32))))
+        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (Conversion.c2k(self.T) - Ca32))))
 
-        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (c2k(self.T) - Ca33))))
+        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (Conversion.c2k(self.T) - Ca33))))
 
-        self.gamma = np.exp(((1 - self.xH2O ** 2) / (self.R * c2k(self.T))) * (
+        self.gamma = np.exp(((1 - self.xH2O ** 2) / (self.R * Conversion.c2k(self.T))) * (
                     Ba + Bb * (1 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (1 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
                         1 - 8 * self.xH2O)))
 
@@ -333,7 +335,7 @@ class Hydrogen_Peroxide(Common_Functions):
         self.T = temperature
         self.P = pressure
         self.xH2O = xH2O
-        self.Tref = c2k(self.T) / 1000
+        self.Tref = Conversion.c2k(self.T) / 1000
 
     def p_L(self):
         """
@@ -402,7 +404,7 @@ class Hydrogen_Peroxide(Common_Functions):
             For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
         """
 
-        self.Tr = c2k(self.T) / self.TcH2O2
+        self.Tr = Conversion.c2k(self.T) / self.TcH2O2
 
     def reduced_pressure(self):
         """
@@ -440,26 +442,26 @@ class Hydrogen_Peroxide(Common_Functions):
         Ca23 = 0.8321514
         Ca33 = 346.2121
 
-        if c2k(self.T) > 0 and c2k(self.T) <= 317.636:
-            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (c2k(self.T) - Ca3) ** 2)))
+        if Conversion.c2k(self.T) > 0 and Conversion.c2k(self.T) <= 317.636:
+            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (Conversion.c2k(self.T) - Ca3) ** 2)))
 
-        if c2k(self.T) > 317.636 and c2k(self.T) <= 348.222:
-            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((c2k(self.T) - Ca3) ** 2))))) + (
-                        P12 * c2k(self.T) ** 2 + P11 * c2k(self.T) + P10)) / 2
+        elif Conversion.c2k(self.T) > 317.636 and Conversion.c2k(self.T) <= 348.222:
+            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((Conversion.c2k(self.T) - Ca3) ** 2))))) + (
+                        P12 * Conversion.c2k(self.T) ** 2 + P11 * Conversion.c2k(self.T) + P10)) / 2
 
-        elif c2k(self.T) > 348.222 and c2k(self.T) <= 391.463:
-            Ba = P22 * c2k(self.T) ** 2 + P21 * c2k(self.T) + P20
+        elif Conversion.c2k(self.T) > 348.222 and Conversion.c2k(self.T) <= 391.463:
+            Ba = P22 * Conversion.c2k(self.T) ** 2 + P21 * Conversion.c2k(self.T) + P20
 
         else:
             Ba = -612.9613
 
-        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((c2k(self.T) - Ca31) ** 2))))
+        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((Conversion.c2k(self.T) - Ca31) ** 2))))
 
-        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (c2k(self.T) - Ca32))))
+        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (Conversion.c2k(self.T) - Ca32))))
 
-        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (c2k(self.T) - Ca33))))
+        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (Conversion.c2k(self.T) - Ca33))))
 
-        self.gamma = np.exp((self.xH2O ** 2 / (self.R * c2k(self.T))) * (
+        self.gamma = np.exp((self.xH2O ** 2 / (self.R * Conversion.c2k(self.T))) * (
                     Ba + Bb * (3 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (5 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
                         7 - 8 * self.xH2O)))
 
@@ -497,7 +499,7 @@ class Oxygen(Common_Functions):
         self.Z = None
         self.T = temperature
         self.P = pressure
-        self.Tref = c2k(self.T) / 1000
+        self.Tref = Conversion.c2k(self.T) / 1000
 
     def heat_capacity_G(self):
         """
@@ -518,7 +520,7 @@ class Oxygen(Common_Functions):
             For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
         """
 
-        self.Tr = c2k(self.T) / self.TcO2
+        self.Tr = Conversion.c2k(self.T) / self.TcO2
 
     def reduced_pressure(self):
         """
@@ -564,7 +566,7 @@ class Common_Properties(Common_Constants):
         b = -0.625
         u = 1.256
 
-        self.st = B * (((self.TcH2O - c2k(self.T)) / self.TcH2O) ** u) * (1 + b * (self.TcH2O - c2k(self.T)) / self.TcH2O)
+        self.st = B * (((self.TcH2O - Conversion.c2k(self.T)) / self.TcH2O) ** u) * (1 + b * (self.TcH2O - Conversion.c2k(self.T)) / self.TcH2O)
 
     def enthvap(self):
         """
@@ -583,7 +585,7 @@ class Common_Properties(Common_Constants):
             Thread(target = self.surface_tension).start()
             Thread(target=self.enthvap).start()
 
-# class Initial_Conditions(Common_Functions):
+# class Initial_Conditions():
 #     def __init__(self, temperature, pressure, H2O2_massfraction, reactor_charge):
 #         """
 #             Initializes instance for starting conditions of the system.
@@ -617,42 +619,43 @@ class Common_Properties(Common_Constants):
 #         self.zO2 = None
 #         self.mH2O = None
 #         self.mH2O2 = None
+#         self.mO2 = None
 #         self.nH2O = None
 #         self.nH2O2 = None
 #         self.nO2 = None
 #         self.ntotal = None
-#         self.VG = None
 #
-#     def initial_conditions(self):
-#         """
-#             Calculates thermodynamically stable starting conditions for the reactor.
-#         """
+#     # def initial_conditions(self):
+#     #     """
+#     #         Calculates thermodynamically stable starting conditions for the reactor.
+#     #     """
+#     #
+#     #     self.mH2O2 = self.mR * self.XH2O2
+#     #     self.mH2O = self.mR * (1 - self.XH2O2)
+#     #
+#     #     self.nH2O2 = self.mH2O2 * 1000 / self.MH2O2
+#     #     self.nH2O = self.mH2O * 1000 / self.MH2O
+#     #
+#     #     VG = self.VR - self.mH2O / self.density - self.mH2O2 / self.density
+#     #
+#     #     self.nO2 = self.P * VG / (self.R * self.c2k(self.T))
+#     #     self.mO2 = self.mO2*self.MO2
+#     #
+#     #     self.ntotal = self.nH2O + self.nH2O2 + self.nO2
+#     #
+#     #     self.zH2O = self.nH2O / self.ntotal
+#     #     self.zH2O2 = self.nH2O2 / self.ntotal
+#     #     self.zO2 = self.nO2 / self.ntotal
+#     #
+#     #     self.xH2O = (self.mH2O / self.MH2O) / ((self.mH2O / self.MH2O) + (self.mH2O2 / self.MH2O2))
 #
-#         self.mH2O2 = self.mR * self.XH2O2
-#         self.mH2O = self.mR * (1 - self.XH2O2)
-#
-#         self.nH2O2 = self.mH2O2 * 1000 / cc.MH2O2
-#         self.nH2O = self.mH2O * 1000 / cc.MH2O
-#
-#         self.VG = vp.VR - self.mH2O / H2O.density - self.mH2O2 / H2O2.density
-#
-#         self.nO2 = self.P * self.VG / (cc.R * c2k(self.T))
-#
-#         self.ntotal = self.nH2O + self.nH2O2 + self.nO2
-#
-#         self.zH2O = self.nH2O / self.ntotal
-#         self.zH2O2 = self.nH2O2 / self.ntotal
-#         self.zO2 = self.nO2 / self.ntotal
-#
-#         self.xH2O = (self.mH2O / cc.MH2O) / ((self.mH2O / cc.MH2O) + (self.mH2O2 / cc.MH2O2))
-#
-#         H2O = Water(self.T, self.P, self.xH2O)
-#         H2O2 = Hydrogen_Peroxide(self.T, self.P, xH2O)
-#         O2 = Oxygen(self.T, self.P)
-#
-#         H2O.runmain()
-#         H2O2.runmain()
-#         O2.runmain()
+#         # H2O = Water(self.T, self.P, self.xH2O)
+#         # H2O2 = Hydrogen_Peroxide(self.T, self.P, xH2O)
+#         # O2 = Oxygen(self.T, self.P)
+#         #
+#         # H2O.runmain()
+#         # H2O2.runmain()
+#         # O2.runmain()
 
 
 
