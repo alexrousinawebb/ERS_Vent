@@ -585,77 +585,80 @@ class Common_Properties(Common_Constants):
             Thread(target = self.surface_tension).start()
             Thread(target=self.enthvap).start()
 
-# class Initial_Conditions():
-#     def __init__(self, temperature, pressure, H2O2_massfraction, reactor_charge):
-#         """
-#             Initializes instance for starting conditions of the system.
-#
-#             Arguments:
-#                 temperature: Temperature of liquid in degrees Celsius
-#                 pressure: Starting headspace pressure in kilopascals
-#                 H2O2_massfraction: Starting H2O2 mass fraction in liquid phase
-#                 reactor_charge: Total mass of starting reactants loaded to reactor (H2O + H2O2) in kg
-#
-#             Outputs:
-#                 zH2O: total mole fraction of water
-#                 zH2O2: total mole fraction of hydrogen peroxide
-#                 zO2: total mole fraction of oxygen
-#                 mH2O: total mass water in system in kg
-#                 mH2O2: total mass hydrogen peroxide in system in kg
-#                 nH2O: total amount water in system in mol
-#                 nH2O2: total amount hydrogen peroxide in system in mol
-#                 nO2: total amount oxygen in system in mol
-#                 ntotal: total amount in system in mol
-#                 VG: headspace volume in L
-#         """
-#
-#         self.T = temperature
-#         self.P = pressure
-#         self.XH2O2 = H2O2_massfraction
-#         self.mR = reactor_charge
-#
-#         self.zH2O = None
-#         self.zH2O2 = None
-#         self.zO2 = None
-#         self.mH2O = None
-#         self.mH2O2 = None
-#         self.mO2 = None
-#         self.nH2O = None
-#         self.nH2O2 = None
-#         self.nO2 = None
-#         self.ntotal = None
-#
-#     # def initial_conditions(self):
-#     #     """
-#     #         Calculates thermodynamically stable starting conditions for the reactor.
-#     #     """
-#     #
-#     #     self.mH2O2 = self.mR * self.XH2O2
-#     #     self.mH2O = self.mR * (1 - self.XH2O2)
-#     #
-#     #     self.nH2O2 = self.mH2O2 * 1000 / self.MH2O2
-#     #     self.nH2O = self.mH2O * 1000 / self.MH2O
-#     #
-#     #     VG = self.VR - self.mH2O / self.density - self.mH2O2 / self.density
-#     #
-#     #     self.nO2 = self.P * VG / (self.R * self.c2k(self.T))
-#     #     self.mO2 = self.mO2*self.MO2
-#     #
-#     #     self.ntotal = self.nH2O + self.nH2O2 + self.nO2
-#     #
-#     #     self.zH2O = self.nH2O / self.ntotal
-#     #     self.zH2O2 = self.nH2O2 / self.ntotal
-#     #     self.zO2 = self.nO2 / self.ntotal
-#     #
-#     #     self.xH2O = (self.mH2O / self.MH2O) / ((self.mH2O / self.MH2O) + (self.mH2O2 / self.MH2O2))
-#
-#         # H2O = Water(self.T, self.P, self.xH2O)
-#         # H2O2 = Hydrogen_Peroxide(self.T, self.P, xH2O)
-#         # O2 = Oxygen(self.T, self.P)
-#         #
-#         # H2O.runmain()
-#         # H2O2.runmain()
-#         # O2.runmain()
+class Initial_Conditions():
+    def __init__(self, temperature, pressure, H2O2_massfraction, reactor_charge):
+        """
+            Initializes instance for starting conditions of the system.
+
+            Arguments:
+                temperature: Temperature of liquid in degrees Celsius
+                pressure: Starting headspace pressure in kilopascals
+                H2O2_massfraction: Starting H2O2 mass fraction in liquid phase
+                reactor_charge: Total mass of starting reactants loaded to reactor (H2O + H2O2) in kg
+
+            Outputs:
+                zH2O: total mole fraction of water
+                zH2O2: total mole fraction of hydrogen peroxide
+                zO2: total mole fraction of oxygen
+                mH2O: total mass water in system in kg
+                mH2O2: total mass hydrogen peroxide in system in kg
+                nH2O: total amount water in system in mol
+                nH2O2: total amount hydrogen peroxide in system in mol
+                nO2: total amount oxygen in system in mol
+                ntotal: total amount in system in mol
+                VG: headspace volume in L
+        """
+
+        self.T = temperature
+        self.P = pressure
+        self.XH2O2 = H2O2_massfraction
+        self.mR = reactor_charge
+
+        self.zH2O = None
+        self.zH2O2 = None
+        self.zO2 = None
+        self.mH2O = None
+        self.mH2O2 = None
+        self.mO2 = None
+        self.nH2O = None
+        self.nH2O2 = None
+        self.nO2 = None
+        self.ntotal = None
+
+    def __call__(self, *args, **kwargs):
+
+
+    def initial_conditions(self):
+        """
+            Calculates thermodynamically stable starting conditions for the reactor.
+        """
+
+        self.mH2O2 = self.mR * self.XH2O2
+        self.mH2O = self.mR * (1 - self.XH2O2)
+
+        self.nH2O2 = self.mH2O2 * 1000 / self.MH2O2
+        self.nH2O = self.mH2O * 1000 / self.MH2O
+
+        VG = self.VR - self.mH2O / self.density - self.mH2O2 / self.density
+
+        self.nO2 = self.P * VG / (self.R * self.c2k(self.T))
+        self.mO2 = self.mO2*self.MO2
+
+        self.ntotal = self.nH2O + self.nH2O2 + self.nO2
+
+        self.zH2O = self.nH2O / self.ntotal
+        self.zH2O2 = self.nH2O2 / self.ntotal
+        self.zO2 = self.nO2 / self.ntotal
+
+        self.xH2O = (self.mH2O / self.MH2O) / ((self.mH2O / self.MH2O) + (self.mH2O2 / self.MH2O2))
+
+        H2O = Water(self.T, self.P, self.xH2O)
+        H2O2 = Hydrogen_Peroxide(self.T, self.P, xH2O)
+        O2 = Oxygen(self.T, self.P)
+
+        H2O.runmain()
+        H2O2.runmain()
+        O2.runmain()
 
 
 
