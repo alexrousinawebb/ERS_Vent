@@ -1,7 +1,7 @@
 """
 UNIT CONVERSION
 ===========================================================================
-Extremely basic module for converting between standard metric and imperial unit sets
+Basic module for converting between standard metric and imperial unit sets
 """
 
 def c2k(temperature):

@@ -27,63 +27,12 @@ Common:
 import numpy as np
 from scipy import optimize as opt
 from threading import Thread as th
-import Conversion as cnv
+from Conversion import c2k
+from EOS import RK_EOS
+import Constant_Lib as constant
 
-class Common_Constants:
-        # Molecular weights (g/mol)
-        MH2O = 18.01528
-        MO2 = 31.998
-        MH2O2 = 34.0147
-
-        # Universal constants
-        R = 8.3145
-        g = 9.81
-
-        # System properties
-        Patm = 101.325
-
-        # Critical temperatures (K)
-        TcO2 = 154.6
-        TcH2O = 647.096
-        TcH2O2 = 728
-
-        # Critical pressures (kPa)
-        PcO2 = 5050
-        PcH2O = 22060
-        PcH2O2 = 22000
-
-class Common_Functions(Common_Constants):
-    def reduced_tempertaure(self):
-        """
-            Calculate the reduced temperature.
-            For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
-        """
-
-        return cnv.c2k(self.T) / self.Tc
-
-    def reduced_pressure(self):
-        """
-            Calculate the reduced pressure.
-            For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
-        """
-
-        return self.P / self.Pc
-
-    def compress_solver(self, z):
-        """
-            Solver for calculating compressibility factors using Redlich-Kwong equations of state.
-        """
-
-        A = 0.42748 * self.Pr / self.Tr ** 2.5
-        B = 0.08664 * self.Pr / self.Tr
-
-        F = np.empty(1)
-        F[0] = z[0] ** 3 - z[0] ** 2 + (A - B - B ** 2) * z[0] - A * B
-
-        return F
-
-class Water(Common_Functions):
-    def __init__(self, temperature, pressure, xH2O):
+class Water(RK_EOS):
+    def __init__(self, temperature=25, pressure=101, xH2O=1):
         """
             Initializes instance of water (H2O).
 
@@ -92,7 +41,6 @@ class Water(Common_Functions):
             P: Pressure in headspace of reactor in kilopascals
             xH2O: Mole fraction of water in liquid phase
         """
-        Common_Functions.__init__(self)
 
         #  Solve for
         self.density = None
@@ -105,12 +53,12 @@ class Water(Common_Functions):
         self.Z = None
 
         #  Inputs
-        self.Tc =self.TcH2O
-        self.Pc = self.PcH2O
+        self.Tc = constant.TcH2O
+        self.Pc = constant.PcH2O
         self.T = temperature
         self.P = pressure
         self.xH2O = xH2O
-        self.Tref = cnv.c2k(self.T) / 1000
+        self.Tref = c2k(self.T) / 1000
 
     def p_L(self):
         """
@@ -154,7 +102,7 @@ class Water(Common_Functions):
         D = 2474.455
         E = 3.855326
 
-        self.cpl = (A + B * self.Tref + C * self.Tref ** 2 + D * self.Tref ** 3 + E / self.Tref ** 2) / self.MH2O
+        self.cpl = (A + B * self.Tref + C * self.Tref ** 2 + D * self.Tref ** 3 + E / self.Tref ** 2) / constant.MH2O
 
     def heat_capacity_G(self):
         """
@@ -166,7 +114,7 @@ class Water(Common_Functions):
         D = -2.534480
         E = 0.082139
 
-        self.cpg = (A + B * self.Tref + C * self.Tref ** 2 + D * self.Tref ** 3 + E / self.Tref ** 2) / self.MH2O
+        self.cpg = (A + B * self.Tref + C * self.Tref ** 2 + D * self.Tref ** 3 + E / self.Tref ** 2) / constant.MH2O
 
     def activity(self):
         """
@@ -196,26 +144,28 @@ class Water(Common_Functions):
         Ca23 = 0.8321514
         Ca33 = 346.2121
 
-        if cnv.c2k(self.T) > 0 and cnv.c2k(self.T) <= 317.636:
-            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (cnv.c2k(self.T) - Ca3) ** 2)))
+        T_K = c2k(self.T)
 
-        elif cnv.c2k(self.T) > 317.636 and cnv.c2k(self.T) <= 348.222:
-            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((cnv.c2k(self.T) - Ca3) ** 2))))) + (
-                        P12 * cnv.c2k(self.T) ** 2 + P11 * cnv.c2k(self.T) + P10)) / 2
+        if T_K > 0 and T_K <= 317.636:
+            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (T_K - Ca3) ** 2)))
 
-        elif cnv.c2k(self.T) > 348.222 and cnv.c2k(self.T) <= 391.463:
-            Ba = P22 * cnv.c2k(self.T) ** 2 + P21 * cnv.c2k(self.T) + P20
+        elif T_K > 317.636 and T_K <= 348.222:
+            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((T_K - Ca3) ** 2))))) + (
+                        P12 * T_K ** 2 + P11 * T_K + P10)) / 2
+
+        elif T_K > 348.222 and T_K <= 391.463:
+            Ba = P22 * c2k(self.T) ** 2 + P21 * c2k(self.T) + P20
 
         else:
             Ba = -612.9613
 
-        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((cnv.c2k(self.T) - Ca31) ** 2))))
+        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((T_K - Ca31) ** 2))))
 
-        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (cnv.c2k(self.T) - Ca32))))
+        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (T_K - Ca32))))
 
-        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (cnv.c2k(self.T) - Ca33))))
+        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (T_K - Ca33))))
 
-        self.gamma = np.exp(((1 - self.xH2O ** 2) / (self.R * cnv.c2k(self.T))) * (
+        self.gamma = np.exp(((1 - self.xH2O ** 2) / (constant.R * T_K)) * (
                     Ba + Bb * (1 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (1 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
                         1 - 8 * self.xH2O)))
 
@@ -236,8 +186,8 @@ class Water(Common_Functions):
         th(target=self.activity).start()
         th(target=self.compress).start()
 
-class Hydrogen_Peroxide(Common_Functions):
-    def __init__(self, temperature, pressure, xH2O):
+class Hydrogen_Peroxide(RK_EOS):
+    def __init__(self, temperature=25, pressure=101, xH2O=0):
         """
             Initializes instance of hydrogen peroxide (H2O2).
 
@@ -246,8 +196,6 @@ class Hydrogen_Peroxide(Common_Functions):
             P: Pressure in headspace in kilopascals
             xH2O: Mole fraction water in liqid phase
         """
-
-        Common_Functions.__init__(self)
 
         #  Solve For
         self.density = None
@@ -260,12 +208,12 @@ class Hydrogen_Peroxide(Common_Functions):
         self.Z = None
 
         #  Inputs
-        self.Tc = self.TcH2O2
-        self.Pc = self.PcH2O2
+        self.Tc = constant.TcH2O2
+        self.Pc = constant.PcH2O2
         self.T = temperature
         self.P = pressure
         self.xH2O = xH2O
-        self.Tref = cnv.c2k(self.T) / 1000
+        self.Tref = c2k(self.T) / 1000
 
     def p_L(self):
         """
@@ -329,7 +277,7 @@ class Hydrogen_Peroxide(Common_Functions):
         I = 9.087440
         J = -0.422157
 
-        self.cpg = (F + G * self.Tref + H * self.Tref ** 2 + I * self.Tref ** 3 + J / self.Tref ** 2) / self.MH2O2
+        self.cpg = (F + G * self.Tref + H * self.Tref ** 2 + I * self.Tref ** 3 + J / self.Tref ** 2) / constant.MH2O2
 
     def activity(self):
         """
@@ -359,26 +307,28 @@ class Hydrogen_Peroxide(Common_Functions):
         Ca23 = 0.8321514
         Ca33 = 346.2121
 
-        if cnv.c2k(self.T) > 0 and cnv.c2k(self.T) <= 317.636:
-            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (cnv.c2k(self.T) - Ca3) ** 2)))
+        T_K = c2k(self.T)
 
-        elif cnv.c2k(self.T) > 317.636 and cnv.c2k(self.T) <= 348.222:
-            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((cnv.c2k(self.T) - Ca3) ** 2))))) + (
-                        P12 * cnv.c2k(self.T) ** 2 + P11 * cnv.c2k(self.T) + P10)) / 2
+        if T_K > 0 and T_K <= 317.636:
+            Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (T_K - Ca3) ** 2)))
 
-        elif cnv.c2k(self.T) > 348.222 and cnv.c2k(self.T) <= 391.463:
-            Ba = P22 * cnv.c2k(self.T) ** 2 + P21 * cnv.c2k(self.T) + P20
+        elif T_K > 317.636 and T_K <= 348.222:
+            Ba = ((Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + ((T_K - Ca3) ** 2))))) + (
+                        P12 * T_K ** 2 + P11 * T_K + P10)) / 2
+
+        elif T_K > 348.222 and T_K <= 391.463:
+            Ba = P22 * T_K ** 2 + P21 * T_K + P20
 
         else:
             Ba = -612.9613
 
-        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((cnv.c2k(self.T) - Ca31) ** 2))))
+        Bb = Ca01 + ((Ca11 * Ca21) / (np.pi * (Ca21 ** 2 + ((T_K - Ca31) ** 2))))
 
-        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (cnv.c2k(self.T) - Ca32))))
+        Bc = Ca02 + (Ca12 / (1 + np.exp(Ca22 * (T_K - Ca32))))
 
-        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (cnv.c2k(self.T) - Ca33))))
+        Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (T_K - Ca33))))
 
-        self.gamma = np.exp((self.xH2O ** 2 / (self.R * cnv.c2k(self.T))) * (
+        self.gamma = np.exp((self.xH2O ** 2 / (constant.R * T_K)) * (
                     Ba + Bb * (3 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (5 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
                         7 - 8 * self.xH2O)))
 
@@ -399,8 +349,8 @@ class Hydrogen_Peroxide(Common_Functions):
         th(target=self.activity).start()
         th(target=self.compress).start()
 
-class Oxygen(Common_Functions):
-    def __init__(self, temperature, pressure):
+class Oxygen(RK_EOS):
+    def __init__(self, temperature=25, pressure=101):
         """
             Initializes instance of oxygen (O2).
 
@@ -409,8 +359,6 @@ class Oxygen(Common_Functions):
             P: Pressure in headspace in kilopascals
         """
 
-        Common_Functions.__init__(self)
-
         #  Solve for
         self.cpg = None
         self.Tr = None
@@ -418,11 +366,11 @@ class Oxygen(Common_Functions):
         self.Z = None
 
         #  Inputs
-        self.Tc = self.TcO2
-        self.Pc = self.PcO2
+        self.Tc = constant.TcO2
+        self.Pc = constant.PcO2
         self.T = temperature
         self.P = pressure
-        self.Tref = cnv.c2k(self.T) / 1000
+        self.Tref = c2k(self.T) / 1000
 
     def heat_capacity_G(self):
         """
@@ -435,7 +383,7 @@ class Oxygen(Common_Functions):
         N = -36.50624
         O = -0.007374
 
-        self.cpg = (K + L * self.Tref + M * self.Tref ** 2 + N * self.Tref ** 3 + O / self.Tref ** 2) / self.MO2
+        self.cpg = (K + L * self.Tref + M * self.Tref ** 2 + N * self.Tref ** 3 + O / self.Tref ** 2) / constant.MO2
 
     def compress(self):
 
@@ -450,8 +398,8 @@ class Oxygen(Common_Functions):
         th(target = self.heat_capacity_G).start()
         th(target=self.compress).start()
 
-class Common_Properties(Common_Constants):
-    def __init__(self, temperature):
+class Common_Properties():
+    def __init__(self, temperature=25):
         """
             Initializes instance for physical properties common to the system.
 
@@ -459,10 +407,10 @@ class Common_Properties(Common_Constants):
             T: Temperature of liquid in degrees Celsius
         """
 
-        Common_Constants.__init__(self)
         self.st = None
         self.dhvap = None
         self.T = temperature
+        self.TcH2O = constant.TcH2O
 
     def surface_tension(self):
         """
@@ -473,7 +421,7 @@ class Common_Properties(Common_Constants):
         b = -0.625
         u = 1.256
 
-        self.st = B * (((self.TcH2O - cnv.c2k(self.T)) / self.TcH2O) ** u) * (1 + b * (self.TcH2O - cnv.c2k(self.T)) / self.TcH2O)
+        self.st = B * (((self.TcH2O - c2k(self.T)) / self.TcH2O) ** u) * (1 + b * (self.TcH2O - c2k(self.T)) / self.TcH2O)
 
     def enthvap(self):
         """
