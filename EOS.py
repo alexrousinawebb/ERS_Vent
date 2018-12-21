@@ -13,21 +13,21 @@ from Conversion import c2k
 import numpy as np
 
 class RK_EOS():
-    def reduced_tempertaure(self):
+    def reduced_tempertaure(self, T, Tc):
         """
             Calculate the reduced temperature.
             For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
         """
 
-        return c2k(self.T) / self.Tc
+        return c2k(T) / Tc
 
-    def reduced_pressure(self):
+    def reduced_pressure(self, P, Pc):
         """
             Calculate the reduced pressure.
             For use in estimating compressibility factors of non-ideal vapours using RK-EOS.
         """
 
-        return self.P / self.Pc
+        return P / Pc
 
     def compress_solver(self, z):
         """

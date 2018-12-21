@@ -25,3 +25,8 @@ TcH2O2 = 728
 PcO2 = 5050
 PcH2O = 22060
 PcH2O2 = 22000
+
+# Kinetics
+dH_rxn = -98300/MH2O2  # (J/g)
+A_ar = 135000  # (1/s)
+Ea = 10357  # (J/mol)

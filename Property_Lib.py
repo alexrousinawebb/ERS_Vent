@@ -30,9 +30,10 @@ from threading import Thread as th
 from Conversion import c2k
 from EOS import RK_EOS
 import Constant_Lib as constant
+import VLE
 
 class Water(RK_EOS):
-    def __init__(self, temperature=25, pressure=101, xH2O=1):
+    def __init__(self, temperature=25, pressure=101):
         """
             Initializes instance of water (H2O).
 
@@ -44,23 +45,29 @@ class Water(RK_EOS):
 
         #  Solve for
         self.density = None
-        self.Psat = None
-        self.Pr = None
         self.cpl = None
         self.cpg = None
-        self.Tr = None
         self.gamma = None
         self.Z = None
+        self.Psat = None
+        self.Pr = None
+        self.Tr = None
+        self.m = None
+        self.x = 1
+        # self.y = None
+        # self.z = None
+        # self.n = None
+        # self.P = None
 
-        #  Inputs
-        self.Tc = constant.TcH2O
-        self.Pc = constant.PcH2O
-        self.T = temperature
-        self.P = pressure
-        self.xH2O = xH2O
-        self.Tref = c2k(self.T) / 1000
 
-    def p_L(self):
+        self.p_L(temperature)
+        self.antoine(temperature)
+        self.heat_capacity_L(temperature)
+        self.heat_capacity_G(temperature)
+        self.activity(temperature, self.x)
+        self.compress(temperature, pressure)
+
+    def p_L(self, T):
         """
             Calculate density of liquid water in kg/L.
         """
@@ -73,14 +80,14 @@ class Water(RK_EOS):
         F = -280.54253e-12
         G = 16.897850e-3
 
-        self.density = ((A + B * self.T + C * self.T ** 2 + D * self.T ** 3 + E * self.T ** 4 + F * self.T ** 5) / (1 + G * self.T)) / 1000
+        self.density = ((A + B * T + C * T ** 2 + D * T ** 3 + E * T ** 4 + F * T ** 5) / (1 + G * T)) / 1000
 
-    def antoine(self):
+    def antoine(self, T):
         """
             Calculate the saturation pressure of water in kPa.
         """
 
-        if self.T > 99:
+        if T > 99:
             A = 8.14019
             B = 1810.94
             C = 244.485
@@ -89,9 +96,9 @@ class Water(RK_EOS):
             B = 1730.63
             C = 233.426
 
-        self.Psat = (10 ** (A - (B / (C + self.T)))) * (101.325 / 760)
+        self.Psat = (10 ** (A - (B / (C + T)))) * (101.325 / 760)
 
-    def heat_capacity_L(self):
+    def heat_capacity_L(self, T):
         """
             Calculate the constant pressure heat capacity of liquid water in J/(g*K).
         """
@@ -102,9 +109,11 @@ class Water(RK_EOS):
         D = 2474.455
         E = 3.855326
 
-        self.cpl = (A + B * self.Tref + C * self.Tref ** 2 + D * self.Tref ** 3 + E / self.Tref ** 2) / constant.MH2O
+        Tref = c2k(T) / 1000
 
-    def heat_capacity_G(self):
+        self.cpl = (A + B * Tref + C * Tref ** 2 + D * Tref ** 3 + E / Tref ** 2) / constant.MH2O
+
+    def heat_capacity_G(self, T):
         """
             Calculate the constant pressure heat capacity of water vapour in J/(g*K).
         """
@@ -114,9 +123,11 @@ class Water(RK_EOS):
         D = -2.534480
         E = 0.082139
 
-        self.cpg = (A + B * self.Tref + C * self.Tref ** 2 + D * self.Tref ** 3 + E / self.Tref ** 2) / constant.MH2O
+        Tref = c2k(T) / 1000
 
-    def activity(self):
+        self.cpg = (A + B * Tref + C * Tref ** 2 + D * Tref ** 3 + E / Tref ** 2) / constant.MH2O
+
+    def activity(self, T, xH2O):
         """
             Calculate the activity coefficient for water (H2O).
         """
@@ -144,7 +155,7 @@ class Water(RK_EOS):
         Ca23 = 0.8321514
         Ca33 = 346.2121
 
-        T_K = c2k(self.T)
+        T_K = c2k(T)
 
         if T_K > 0 and T_K <= 317.636:
             Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (T_K - Ca3) ** 2)))
@@ -154,7 +165,7 @@ class Water(RK_EOS):
                         P12 * T_K ** 2 + P11 * T_K + P10)) / 2
 
         elif T_K > 348.222 and T_K <= 391.463:
-            Ba = P22 * c2k(self.T) ** 2 + P21 * c2k(self.T) + P20
+            Ba = P22 * T_K ** 2 + P21 * T_K + P20
 
         else:
             Ba = -612.9613
@@ -165,29 +176,21 @@ class Water(RK_EOS):
 
         Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (T_K - Ca33))))
 
-        self.gamma = np.exp(((1 - self.xH2O ** 2) / (constant.R * T_K)) * (
-                    Ba + Bb * (1 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (1 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
-                        1 - 8 * self.xH2O)))
+        self.gamma = np.exp(((1 - xH2O ** 2) / (constant.R * T_K)) * (
+                    Ba + Bb * (1 - 4 * xH2O) + Bc * (1 - 2 * xH2O) * (1 - 6 * xH2O) + Bd * ((1 - 2 * xH2O) ** 2) * (
+                        1 - 8 * xH2O)))
 
-    def compress(self):
+    def compress(self, T, P):
 
         initval = np.asarray(0.99)
 
-        self.Tr = self.reduced_tempertaure()
-        self.Pr = self.reduced_pressure()
+        self.Tr = self.reduced_tempertaure(T, constant.TcH2O)
+        self.Pr = self.reduced_pressure(P, constant.PcH2O)
 
-        self.Z = opt.fsolve(self.compress_solver, initval)
-
-    def runmain(self):
-        th(target = self.antoine).start()
-        th(target=self.heat_capacity_L).start()
-        th(target=self.heat_capacity_G).start()
-        th(target=self.p_L).start()
-        th(target=self.activity).start()
-        th(target=self.compress).start()
+        self.Z = float(opt.fsolve(self.compress_solver, initval))
 
 class Hydrogen_Peroxide(RK_EOS):
-    def __init__(self, temperature=25, pressure=101, xH2O=0):
+    def __init__(self, temperature=25, pressure=101):
         """
             Initializes instance of hydrogen peroxide (H2O2).
 
@@ -199,23 +202,29 @@ class Hydrogen_Peroxide(RK_EOS):
 
         #  Solve For
         self.density = None
-        self.Psat = None
-        self.Pr = None
         self.cpl = None
         self.cpg = None
-        self.Tr = None
         self.gamma = None
         self.Z = None
+        self.Psat = None
+        self.Pr = None
+        self.Tr = None
+        self.m = None
+        self.x = 0
+        self.y = None
+        self.z = None
+        self.n = None
+        self.P = None
 
-        #  Inputs
-        self.Tc = constant.TcH2O2
-        self.Pc = constant.PcH2O2
-        self.T = temperature
-        self.P = pressure
-        self.xH2O = xH2O
-        self.Tref = c2k(self.T) / 1000
+        #  Calculate physical properties based on input
+        self.p_L(temperature)
+        self.antoine(temperature)
+        self.heat_capacity_G(temperature)
+        self.heat_capacity_L(temperature)
+        self.activity(temperature, self.x)
+        self.compress(temperature, pressure)
 
-    def p_L(self):
+    def p_L(self, T):
         """
             Calculate density of liquid hydrogen peroxide in kg/L.
         """
@@ -233,19 +242,18 @@ class Hydrogen_Peroxide(RK_EOS):
         Mc = 3.6165E-7
         Md = -2.5500E-7
 
-        N = Jb + Kb * self.T + Lb * (self.T ** 2) + Mb * (self.T ** 3)
-        O = Jc + Kc * self.T + Lc * (self.T ** 2) + Mc * (self.T ** 3)
-        P = Jd + Kd * self.T + Ld * (self.T ** 2) + Md * (self.T ** 3)
+        N = Jb + Kb * T + Lb * (T ** 2) + Mb * (T ** 3)
+        O = Jc + Kc * T + Lc * (T ** 2) + Mc * (T ** 3)
+        P = Jd + Kd * T + Ld * (T ** 2) + Md * (T ** 3)
 
-        if self.T >= 100:
+        if T >= 100:
             self.density = 1.2456174226244978
         else:
-            H2O = Water(self.T, self.P, self.xH2O)
-            H2O.p_L()
+            H2O = Water(T)
 
             self.density = H2O.density + N + O ** 2 + P ** 3
 
-    def antoine(self):
+    def antoine(self, T):
         """
             Calculate the saturation pressure of hydrogen peroxide in kPa.
         """
@@ -254,9 +262,9 @@ class Hydrogen_Peroxide(RK_EOS):
         E = 1886.76
         F = 220.6
 
-        self.Psat = (10 ** (D - (E / (F + self.T)))) * (101.325 / 760)
+        self.Psat = (10 ** (D - (E / (F + T)))) * (101.325 / 760)
 
-    def heat_capacity_L(self):
+    def heat_capacity_L(self, T):
         """
             Calculate the constant pressure heat capacity of liquid hydrogen peroxide in J/(g*K).
         """
@@ -264,9 +272,9 @@ class Hydrogen_Peroxide(RK_EOS):
         A = 0.657
         B = 2.11e-4
 
-        self.cpl = (A + B * self.T) * 4.184
+        self.cpl = (A + B * T) * 4.184
 
-    def heat_capacity_G(self):
+    def heat_capacity_G(self, T):
         """
             Calculate the constant pressure heat capacity of hydrogen peroxide vapour in J/(g*K).
         """
@@ -277,9 +285,11 @@ class Hydrogen_Peroxide(RK_EOS):
         I = 9.087440
         J = -0.422157
 
-        self.cpg = (F + G * self.Tref + H * self.Tref ** 2 + I * self.Tref ** 3 + J / self.Tref ** 2) / constant.MH2O2
+        Tref = c2k(T) / 1000
 
-    def activity(self):
+        self.cpg = (F + G * Tref + H * Tref ** 2 + I * Tref ** 3 + J / Tref ** 2) / constant.MH2O2
+
+    def activity(self, T, xH2O):
         """
             Calculate the activity coefficient for hydrogen peroxide (H2O).
         """
@@ -307,7 +317,7 @@ class Hydrogen_Peroxide(RK_EOS):
         Ca23 = 0.8321514
         Ca33 = 346.2121
 
-        T_K = c2k(self.T)
+        T_K = c2k(T)
 
         if T_K > 0 and T_K <= 317.636:
             Ba = Ca0 + ((Ca1 * Ca2) / (np.pi * (Ca2 ** 2 + (T_K - Ca3) ** 2)))
@@ -328,26 +338,18 @@ class Hydrogen_Peroxide(RK_EOS):
 
         Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (T_K - Ca33))))
 
-        self.gamma = np.exp((self.xH2O ** 2 / (constant.R * T_K)) * (
-                    Ba + Bb * (3 - 4 * self.xH2O) + Bc * (1 - 2 * self.xH2O) * (5 - 6 * self.xH2O) + Bd * ((1 - 2 * self.xH2O) ** 2) * (
-                        7 - 8 * self.xH2O)))
+        self.gamma = np.exp((xH2O ** 2 / (constant.R * T_K)) * (
+                    Ba + Bb * (3 - 4 * xH2O) + Bc * (1 - 2 * xH2O) * (5 - 6 * xH2O) + Bd * ((1 - 2 * xH2O) ** 2) * (
+                        7 - 8 * xH2O)))
 
-    def compress(self):
+    def compress(self, T, P):
 
         initval = np.asarray(0.99)
 
-        self.Tr = self.reduced_tempertaure()
-        self.Pr = self.reduced_pressure()
+        self.Tr = self.reduced_tempertaure(T, constant.TcH2O2)
+        self.Pr = self.reduced_pressure(P, constant.PcH2O2)
 
-        self.Z = opt.fsolve(self.compress_solver, initval)
-
-    def runmain(self):
-        th(target = self.antoine).start()
-        th(target=self.heat_capacity_L).start()
-        th(target=self.heat_capacity_G).start()
-        th(target=self.p_L).start()
-        th(target=self.activity).start()
-        th(target=self.compress).start()
+        self.Z = float(opt.fsolve(self.compress_solver, initval))
 
 class Oxygen(RK_EOS):
     def __init__(self, temperature=25, pressure=101):
@@ -361,18 +363,21 @@ class Oxygen(RK_EOS):
 
         #  Solve for
         self.cpg = None
+        self.Z = None
         self.Tr = None
         self.Pr = None
-        self.Z = None
+        self.m = None
+        self.x = None
+        self.y = None
+        self.z = None
+        self.n = None
+        self.P = None
 
-        #  Inputs
-        self.Tc = constant.TcO2
-        self.Pc = constant.PcO2
-        self.T = temperature
-        self.P = pressure
-        self.Tref = c2k(self.T) / 1000
+        #  Calculate physical properties
+        self.heat_capacity_G(temperature)
+        self.compress(temperature, pressure)
 
-    def heat_capacity_G(self):
+    def heat_capacity_G(self, T):
         """
             Calculate the constant pressure heat capacity of oxygen gas in J/(g*K).
         """
@@ -383,20 +388,18 @@ class Oxygen(RK_EOS):
         N = -36.50624
         O = -0.007374
 
-        self.cpg = (K + L * self.Tref + M * self.Tref ** 2 + N * self.Tref ** 3 + O / self.Tref ** 2) / constant.MO2
+        Tref = c2k(T) / 1000
 
-    def compress(self):
+        self.cpg = (K + L * Tref + M * Tref ** 2 + N * Tref ** 3 + O / Tref ** 2) / constant.MO2
+
+    def compress(self, T, P):
 
         initval = np.asarray(0.99)
 
-        self.Tr = self.reduced_tempertaure()
-        self.Pr = self.reduced_pressure()
+        self.Tr = self.reduced_tempertaure(T, constant.TcO2)
+        self.Pr = self.reduced_pressure(P, constant.PcO2)
 
-        self.Z = opt.fsolve(self.compress_solver, initval)
-
-    def runmain(self):
-        th(target = self.heat_capacity_G).start()
-        th(target=self.compress).start()
+        self.Z = float(opt.fsolve(self.compress_solver, initval))
 
 class Common_Properties():
     def __init__(self, temperature=25):
@@ -409,6 +412,8 @@ class Common_Properties():
 
         self.st = None
         self.dhvap = None
+        self.dvLdt = None
+        self.dvGdt = None
         self.T = temperature
         self.TcH2O = constant.TcH2O
 
@@ -438,3 +443,41 @@ class Common_Properties():
     def runmain(self):
         th(target = self.surface_tension).start()
         th(target=self.enthvap).start()
+
+    # def delta_sv_G(self):
+    #     self.dvGdt = constant.R * ((1 / (compress(PH2O, T, 'H2O') * constant.MH2O * PH2O)) + (
+    #                 1 / (compress(PH2O2, T, 'H2O2') * constant.MH2O2 * PH2O2)) + (1 / (
+    #                 compress(PO2, T, 'O2') * constant.MO2 * PO2)))  # This is not exactly correct Z and P also f(P)
+    # def delta_sv_L(self):
+    #     A = 999.83952
+    #     B = 16.945176
+    #     C = -7.987040e-3
+    #     D = -46.170461e-6
+    #     E = 105.56302e-9
+    #     F = -280.54253e-12
+    #     G = 16.897850e-3
+    #
+    #     self.dvLdt = -G * (A + B * self.T + C * self.T ** 2 + D * self.T ** 3 + E * self.T ** 4 + F * self.T ** 5) / (
+    #             1000 * (G * self.T + 1) ** 2) + (B + 2 * C * self.T + 3 * D * self.T ** 2 + 4 * E * self.T ** 3 +
+    #                                              5 * F * self.T ** 4) / (1000 * (G * self.T + 1))
+
+class Kinetics():
+    def __init__(self, temperature, kf=1):
+        """
+            Initializes instance of rate kinetics.
+
+            Arguments:
+            T: Temperature of medium in degrees Celsius
+            kf: Contamination factor for acceleration of hydrogen peroxide decomposition.
+                kf=1 is no contamination.
+        """
+
+        #  Solve for
+        self.rate = None
+
+        #  Inputs
+        self.kf = kf
+        self.T = temperature
+
+    def kinetics(self):
+        self.rate = constant.A_ar * self.kf * np.exp(-constant.Ea / c2k(self.T))

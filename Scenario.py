@@ -17,8 +17,12 @@ class Scenario():
             P: Pressure in headspace of reactor in kilopascals
             xH2O: Mole fraction of water in liquid phase
         """
+
+        #  Reactor Parameters
         self.VR = g2l(reactor_volume)
         self.Ux = heat_transfer_coefficient
         self.AR = aspect_ratio
         self.D = 2 * ((self.VR * 0.001) / (2 * np.pi * self.AR)) ** (1 / 3)
         self.h = self.D * self.AR
+
+        #  ERS Design Parameters
