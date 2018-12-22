@@ -54,10 +54,10 @@ class Water(RK_EOS):
         self.Tr = None
         self.m = None
         self.x = 1
-        # self.y = None
-        # self.z = None
-        # self.n = None
-        # self.P = None
+        self.y = None
+        self.z = None
+        self.n = None
+        self.P = None
 
 
         self.p_L(temperature)
@@ -188,6 +188,14 @@ class Water(RK_EOS):
         self.Pr = self.reduced_pressure(P, constant.PcH2O)
 
         self.Z = float(opt.fsolve(self.compress_solver, initval))
+
+    def inherit_properties(self, equilibrium_conditions):
+        self.x = equilibrium_conditions.xH2O
+        self.y = equilibrium_conditions.yH2O
+        self.P = equilibrium_conditions.PH2O
+        self.z = equilibrium_conditions.zH2O
+        self.m = equilibrium_conditions.mH2O
+        self.n = equilibrium_conditions.nH2O
 
 class Hydrogen_Peroxide(RK_EOS):
     def __init__(self, temperature=25, pressure=101):
@@ -351,6 +359,14 @@ class Hydrogen_Peroxide(RK_EOS):
 
         self.Z = float(opt.fsolve(self.compress_solver, initval))
 
+    def inherit_properties(self, equilibrium_conditions):
+        self.x = equilibrium_conditions.xH2O2
+        self.y = equilibrium_conditions.yH2O2
+        self.P = equilibrium_conditions.PH2O2
+        self.z = equilibrium_conditions.zH2O2
+        self.m = equilibrium_conditions.mH2O2
+        self.n = equilibrium_conditions.nH2O2
+
 class Oxygen(RK_EOS):
     def __init__(self, temperature=25, pressure=101):
         """
@@ -400,6 +416,14 @@ class Oxygen(RK_EOS):
         self.Pr = self.reduced_pressure(P, constant.PcO2)
 
         self.Z = float(opt.fsolve(self.compress_solver, initval))
+
+    def inherit_properties(self, equilibrium_conditions):
+        self.x = equilibrium_conditions.xO2
+        self.y = equilibrium_conditions.yO2
+        self.P = equilibrium_conditions.PO2
+        self.z = equilibrium_conditions.zO2
+        self.m = equilibrium_conditions.mO2
+        self.n = equilibrium_conditions.nO2
 
 class Common_Properties():
     def __init__(self, temperature=25):

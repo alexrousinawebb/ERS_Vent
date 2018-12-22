@@ -79,14 +79,15 @@ class Equilibrate(Solvers):
 
         initvals = np.asarray(data)
 
-        (pl.Water.x, pl.Hydrogen_Peroxide.x, pl.Water.y, pl.Hydrogen_Peroxide.y, pl.Oxygen.y, self.nL,
-         self.nG, self.P, pl.Water.P, pl.Hydrogen_Peroxide.P, self.VL, ZO2) = opt.fsolve(self.VLE, initvals)
+        outputA = opt.fsolve(self.VLE, initvals)
+
+        (self.xH2O, self.xH2O2, self.yH2O, self.yH2O2, self.yO2, self.nL, self.nG, self.P, self.PH2O, self.PH2O2, self.VL, ZO2) = outputA
 
         self.VG = self.VR - self.VL
 
-        pl.Oxygen.x = 0
+        self.xO2 = 0
 
-        pl.Oxygen.P = self.nO2 * constant.R * c2k(self.T) / self.VG
+        self.PO2 = self.nO2 * constant.R * c2k(self.T) / self.VG
 
 class Initial_Conditions(Equilibrate):
     def __init__(self, temperature, H2O2_massfraction, reactor_charge, scenario, pressure=101):
@@ -118,11 +119,34 @@ class Initial_Conditions(Equilibrate):
         self.VR = scenario.VR
         self.P0 = pressure
 
+        self.zH2O = None
+        self.zH2O2 = None
+        self.zO2 = None
+
+        self.xH2O = None
+        self.xH2O2 = None
+        self.xO2 = None
+
+        self.yH2O = None
+        self.yH2O2 = None
+        self.yO2 = None
+
+        self.mH2O = None
+        self.mH2O2 = None
+        self.mO2 = None
+
+        self.nH2O = None
+        self.nH2O2 = None
+        self.nO2 = None
+
         self.ntotal = None
         self.nL = None
         self.nG = None
 
         self.P = None
+        self.PH2O = None
+        self.PH2O2 = None
+        self.PO2 = None
 
         self.VL = None
         self.VG = None
@@ -137,39 +161,24 @@ class Initial_Conditions(Equilibrate):
         H2O = pl.Water(self.T)
         H2O2 = pl.Hydrogen_Peroxide(self.T)
 
-        mH2O2 = self.mR * self.XH2O2
-        mH2O = self.mR * (1 - self.XH2O2)
+        self.mH2O2 = self.mR * self.XH2O2
+        self.mH2O = self.mR * (1 - self.XH2O2)
 
-        nH2O2 = mH2O2 * 1000 / constant.MH2O2
-        nH2O = mH2O * 1000 / constant.MH2O
+        self.nH2O2 = self.mH2O2 * 1000 / constant.MH2O2
+        self.nH2O = self.mH2O * 1000 / constant.MH2O
 
-        VG = self.VR - mH2O / H2O.density - mH2O2 / H2O2.density
-        VL = mH2O / H2O.density - mH2O2 / H2O2.density
+        VG = self.VR - self.mH2O / H2O.density - self.mH2O2 / H2O2.density
+        VL = self.mH2O / H2O.density - self.mH2O2 / H2O2.density
 
         self.nO2 = self.P0 * VG / (constant.R * c2k(self.T))
-        mO2 = self.nO2*constant.MO2
+        self.mO2 = self.nO2*constant.MO2
 
-        self.ntotal = nH2O + nH2O2 + self.nO2
+        self.ntotal = self.nH2O + self.nH2O2 + self.nO2
 
-        self.zH2O = nH2O / self.ntotal
-        self.zH2O2 = nH2O2 / self.ntotal
-        zO2 = self.nO2 / self.ntotal
+        self.zH2O = self.nH2O / self.ntotal
+        self.zH2O2 = self.nH2O2 / self.ntotal
+        self.zO2 = self.nO2 / self.ntotal
 
-        data = [self.zH2O, self.zH2O2, self.zH2O, self.zH2O2, zO2, self.ntotal, self.nO2, self.P0, H2O.Psat, H2O2.Psat, VL, 0.95]
+        data = [self.zH2O, self.zH2O2, self.zH2O, self.zH2O2, self.zO2, self.ntotal, self.nO2, self.P0, H2O.Psat, H2O2.Psat, VL, 0.95]
 
         self.equilibrate(data)
-
-        #  Set water attributes
-        pl.Water.m = mH2O
-        pl.Water.z = self.zH2O
-        pl.Water.n = nH2O
-
-        #  Set hydrogen peroxide attributes
-        pl.Hydrogen_Peroxide.m = mH2O2
-        pl.Hydrogen_Peroxide.z = self.zH2O2
-        pl.Hydrogen_Peroxide.n = nH2O2
-
-        #  Set oxygen attributes
-        pl.Oxygen.m = mO2
-        pl.Oxygen.z = zO2
-        pl.Oxygen.n = self.nO2
