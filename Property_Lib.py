@@ -33,7 +33,7 @@ import Constant_Lib as constant
 import VLE
 
 class Water(RK_EOS):
-    def __init__(self, temperature=25, pressure=101):
+    def __init__(self, temperature=25, pressure=101, vle=None):
         """
             Initializes instance of water (H2O).
 
@@ -59,6 +59,10 @@ class Water(RK_EOS):
         self.n = None
         self.P = None
 
+        try:
+            self.inherit_properties(vle)
+        except:
+            pass
 
         self.p_L(temperature)
         self.antoine(temperature)
@@ -198,7 +202,7 @@ class Water(RK_EOS):
         self.n = equilibrium_conditions.nH2O
 
 class Hydrogen_Peroxide(RK_EOS):
-    def __init__(self, temperature=25, pressure=101):
+    def __init__(self, temperature=25, pressure=101, vle=None):
         """
             Initializes instance of hydrogen peroxide (H2O2).
 
@@ -223,6 +227,11 @@ class Hydrogen_Peroxide(RK_EOS):
         self.z = None
         self.n = None
         self.P = None
+
+        try:
+            self.inherit_properties(vle)
+        except:
+            pass
 
         #  Calculate physical properties based on input
         self.p_L(temperature)
@@ -368,7 +377,7 @@ class Hydrogen_Peroxide(RK_EOS):
         self.n = equilibrium_conditions.nH2O2
 
 class Oxygen(RK_EOS):
-    def __init__(self, temperature=25, pressure=101):
+    def __init__(self, temperature=25, pressure=101, vle=None):
         """
             Initializes instance of oxygen (O2).
 
@@ -388,6 +397,11 @@ class Oxygen(RK_EOS):
         self.z = None
         self.n = None
         self.P = None
+
+        try:
+            self.inherit_properties(vle)
+        except:
+            pass
 
         #  Calculate physical properties
         self.heat_capacity_G(temperature)
