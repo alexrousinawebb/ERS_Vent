@@ -440,22 +440,45 @@ class Oxygen(RK_EOS):
         self.n = equilibrium_conditions.nO2
 
 class Common_Properties():
-    def __init__(self, temperature=25):
+    def __init__(self, temperature=25, vle=None, H2O=None, H2O2=None, O2=None):
         """
             Initializes instance for physical properties common to the system.
 
             Arguments:
             T: Temperature of liquid in degrees Celsius
+            vle: Equilbrium conditions model object
+            H2O, H2O2, O2: compound model objects
         """
 
         self.st = None
         self.dhvap = None
         self.dvLdt = None
         self.dvGdt = None
-        self.T = temperature
-        self.TcH2O = constant.TcH2O
+        self.P = None
+        self.ntotal = None
+        self.nL = None
+        self.nG = None
+        self.VL = None
+        self.VG = None
+        self.mR = None
+        self.k = None
 
-    def surface_tension(self):
+        try:
+            self.inherit_properties(vle)
+        except:
+            pass
+
+        try:
+            self.delta_sv_G(H2O, H2O2, O2)
+            self.k_ratio(H2O, H2O2, O2)
+        except:
+            pass
+
+        self.delta_sv_L(temperature)
+        self.surface_tension(temperature)
+        self.enthvap(temperature)
+
+    def surface_tension(self, T):
         """
             Calculate surface tension of liquid water in N/m.
         """
@@ -464,9 +487,9 @@ class Common_Properties():
         b = -0.625
         u = 1.256
 
-        self.st = B * (((self.TcH2O - c2k(self.T)) / self.TcH2O) ** u) * (1 + b * (self.TcH2O - c2k(self.T)) / self.TcH2O)
+        self.st = B * (((constant.TcH2O - c2k(T)) / constant.TcH2O) ** u) * (1 + b * (constant.TcH2O - c2k(T)) / constant.TcH2O)
 
-    def enthvap(self):
+    def enthvap(self, T):
         """
             Calculate the enthalpy of vaporization of water in J/g.
         """
@@ -476,28 +499,43 @@ class Common_Properties():
         C = -2.75588
         D = 2500.2
 
-        self.dhvap = A * self.T ** 3 + B * self.T ** 2 + C * self.T + D
+        self.dhvap = A * T ** 3 + B * T ** 2 + C * T + D
 
-    def runmain(self):
-        th(target = self.surface_tension).start()
-        th(target=self.enthvap).start()
+    def delta_sv_G(self, H2O, H2O2, O2):
 
-    # def delta_sv_G(self):
-    #     self.dvGdt = constant.R * ((1 / (compress(PH2O, T, 'H2O') * constant.MH2O * PH2O)) + (
-    #                 1 / (compress(PH2O2, T, 'H2O2') * constant.MH2O2 * PH2O2)) + (1 / (
-    #                 compress(PO2, T, 'O2') * constant.MO2 * PO2)))  # This is not exactly correct Z and P also f(P)
-    # def delta_sv_L(self):
-    #     A = 999.83952
-    #     B = 16.945176
-    #     C = -7.987040e-3
-    #     D = -46.170461e-6
-    #     E = 105.56302e-9
-    #     F = -280.54253e-12
-    #     G = 16.897850e-3
-    #
-    #     self.dvLdt = -G * (A + B * self.T + C * self.T ** 2 + D * self.T ** 3 + E * self.T ** 4 + F * self.T ** 5) / (
-    #             1000 * (G * self.T + 1) ** 2) + (B + 2 * C * self.T + 3 * D * self.T ** 2 + 4 * E * self.T ** 3 +
-    #                                              5 * F * self.T ** 4) / (1000 * (G * self.T + 1))
+        self.dvGdt = constant.R * (1 / (H2O.Z * constant.MH2O * H2O.P)) + (
+                    1 / (H2O2.Z * constant.MH2O2 * H2O2.P)) + (1 / (
+                    O2.Z * constant.MO2 * O2.P))
+
+    def delta_sv_L(self, T):
+        A = 999.83952
+        B = 16.945176
+        C = -7.987040e-3
+        D = -46.170461e-6
+        E = 105.56302e-9
+        F = -280.54253e-12
+        G = 16.897850e-3
+
+        self.dvLdt = -G * (A + B * T + C * T ** 2 + D * T ** 3 + E * T ** 4 + F * T ** 5) / (
+                1000 * (G * T + 1) ** 2) + (B + 2 * C * T + 3 * D * T ** 2 + 4 * E * T ** 3 +
+                                                 5 * F * T ** 4) / (1000 * (G * T + 1))
+
+    def k_ratio(self, H2O, H2O2, O2):
+
+        CpG = H2O.y * H2O.cpg * constant.MH2O + H2O2.y * H2O2.cpg * constant.MH2O2 + O2.y * O2.cpg * constant.MO2
+
+        CvG = CpG - constant.R
+
+        self.k = CpG / CvG
+
+    def inherit_properties(self, equilibrium_conditions):
+        self.P = equilibrium_conditions.P
+        self.ntotal = equilibrium_conditions.ntotal
+        self.nL = equilibrium_conditions.nL
+        self.nG = equilibrium_conditions.nG
+        self.VL = equilibrium_conditions.VL
+        self.VG = equilibrium_conditions.VG
+        self.mR = equilibrium_conditions.mR
 
 class Kinetics():
     def __init__(self, temperature, kf=1):
