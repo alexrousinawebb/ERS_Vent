@@ -26,10 +26,9 @@ Common:
 
 import numpy as np
 from scipy import optimize as opt
-from threading import Thread as th
 from Conversion import c2k
 from EOS import RK_EOS
-import Constant_Lib as constant
+import Constant_Lib as cc
 import VLE
 
 class Water(RK_EOS):
@@ -38,9 +37,9 @@ class Water(RK_EOS):
             Initializes instance of water (H2O).
 
             Arguments:
-            T: Temperature of liquid in degrees Celsius
-            P: Pressure in headspace of reactor in kilopascals
-            xH2O: Mole fraction of water in liquid phase
+            T:      Temperature of liquid in degrees Celsius
+            P:      Pressure in headspace of reactor in kilopascals
+            xH2O:   Mole fraction of water in liquid phase
         """
 
         #  Solve for
@@ -115,7 +114,7 @@ class Water(RK_EOS):
 
         Tref = c2k(T) / 1000
 
-        self.cpl = (A + B * Tref + C * Tref ** 2 + D * Tref ** 3 + E / Tref ** 2) / constant.MH2O
+        self.cpl = (A + B * Tref + C * Tref ** 2 + D * Tref ** 3 + E / Tref ** 2) / cc.MH2O
 
     def heat_capacity_G(self, T):
         """
@@ -129,7 +128,7 @@ class Water(RK_EOS):
 
         Tref = c2k(T) / 1000
 
-        self.cpg = (A + B * Tref + C * Tref ** 2 + D * Tref ** 3 + E / Tref ** 2) / constant.MH2O
+        self.cpg = (A + B * Tref + C * Tref ** 2 + D * Tref ** 3 + E / Tref ** 2) / cc.MH2O
 
     def activity(self, T, xH2O):
         """
@@ -180,7 +179,7 @@ class Water(RK_EOS):
 
         Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (T_K - Ca33))))
 
-        self.gamma = np.exp(((1 - xH2O ** 2) / (constant.R * T_K)) * (
+        self.gamma = np.exp(((1 - xH2O ** 2) / (cc.R * T_K)) * (
                     Ba + Bb * (1 - 4 * xH2O) + Bc * (1 - 2 * xH2O) * (1 - 6 * xH2O) + Bd * ((1 - 2 * xH2O) ** 2) * (
                         1 - 8 * xH2O)))
 
@@ -188,8 +187,8 @@ class Water(RK_EOS):
 
         initval = np.asarray(0.99)
 
-        self.Tr = self.reduced_tempertaure(T, constant.TcH2O)
-        self.Pr = self.reduced_pressure(P, constant.PcH2O)
+        self.Tr = self.reduced_tempertaure(T, cc.TcH2O)
+        self.Pr = self.reduced_pressure(P, cc.PcH2O)
 
         self.Z = float(opt.fsolve(self.compress_solver, initval))
 
@@ -207,9 +206,9 @@ class Hydrogen_Peroxide(RK_EOS):
             Initializes instance of hydrogen peroxide (H2O2).
 
             Arguments:
-            T: Temperature of liquid in degrees Celsius
-            P: Pressure in headspace in kilopascals
-            xH2O: Mole fraction water in liqid phase
+            T:      Temperature of liquid in degrees Celsius
+            P:      Pressure in headspace in kilopascals
+            xH2O:   Mole fraction water in liqid phase
         """
 
         #  Solve For
@@ -304,7 +303,7 @@ class Hydrogen_Peroxide(RK_EOS):
 
         Tref = c2k(T) / 1000
 
-        self.cpg = (F + G * Tref + H * Tref ** 2 + I * Tref ** 3 + J / Tref ** 2) / constant.MH2O2
+        self.cpg = (F + G * Tref + H * Tref ** 2 + I * Tref ** 3 + J / Tref ** 2) / cc.MH2O2
 
     def activity(self, T, xH2O):
         """
@@ -355,7 +354,7 @@ class Hydrogen_Peroxide(RK_EOS):
 
         Bd = Ca03 + (Ca13 / (1 + np.exp(Ca23 * (T_K - Ca33))))
 
-        self.gamma = np.exp((xH2O ** 2 / (constant.R * T_K)) * (
+        self.gamma = np.exp((xH2O ** 2 / (cc.R * T_K)) * (
                     Ba + Bb * (3 - 4 * xH2O) + Bc * (1 - 2 * xH2O) * (5 - 6 * xH2O) + Bd * ((1 - 2 * xH2O) ** 2) * (
                         7 - 8 * xH2O)))
 
@@ -363,8 +362,8 @@ class Hydrogen_Peroxide(RK_EOS):
 
         initval = np.asarray(0.99)
 
-        self.Tr = self.reduced_tempertaure(T, constant.TcH2O2)
-        self.Pr = self.reduced_pressure(P, constant.PcH2O2)
+        self.Tr = self.reduced_tempertaure(T, cc.TcH2O2)
+        self.Pr = self.reduced_pressure(P, cc.PcH2O2)
 
         self.Z = float(opt.fsolve(self.compress_solver, initval))
 
@@ -420,14 +419,14 @@ class Oxygen(RK_EOS):
 
         Tref = c2k(T) / 1000
 
-        self.cpg = (K + L * Tref + M * Tref ** 2 + N * Tref ** 3 + O / Tref ** 2) / constant.MO2
+        self.cpg = (K + L * Tref + M * Tref ** 2 + N * Tref ** 3 + O / Tref ** 2) / cc.MO2
 
     def compress(self, T, P):
 
         initval = np.asarray(0.99)
 
-        self.Tr = self.reduced_tempertaure(T, constant.TcO2)
-        self.Pr = self.reduced_pressure(P, constant.PcO2)
+        self.Tr = self.reduced_tempertaure(T, cc.TcO2)
+        self.Pr = self.reduced_pressure(P, cc.PcO2)
 
         self.Z = float(opt.fsolve(self.compress_solver, initval))
 
@@ -445,9 +444,9 @@ class Common_Properties():
             Initializes instance for physical properties common to the system.
 
             Arguments:
-            T: Temperature of liquid in degrees Celsius
-            vle: Equilbrium conditions model object
-            H2O, H2O2, O2: compound model objects
+            T:              Temperature of liquid in degrees Celsius
+            vle:            Equilbrium conditions model object
+            H2O, H2O2, O2:  compound model objects
         """
 
         self.st = None
@@ -487,7 +486,7 @@ class Common_Properties():
         b = -0.625
         u = 1.256
 
-        self.st = B * (((constant.TcH2O - c2k(T)) / constant.TcH2O) ** u) * (1 + b * (constant.TcH2O - c2k(T)) / constant.TcH2O)
+        self.st = B * (((cc.TcH2O - c2k(T)) / cc.TcH2O) ** u) * (1 + b * (cc.TcH2O - c2k(T)) / cc.TcH2O)
 
     def enthvap(self, T):
         """
@@ -503,9 +502,9 @@ class Common_Properties():
 
     def delta_sv_G(self, H2O, H2O2, O2):
 
-        self.dvGdt = constant.R * (1 / (H2O.Z * constant.MH2O * H2O.P)) + (
-                    1 / (H2O2.Z * constant.MH2O2 * H2O2.P)) + (1 / (
-                    O2.Z * constant.MO2 * O2.P))
+        self.dvGdt = cc.R * (1 / (H2O.Z * cc.MH2O * H2O.P)) + (
+                    1 / (H2O2.Z * cc.MH2O2 * H2O2.P)) + (1 / (
+                    O2.Z * cc.MO2 * O2.P))
 
     def delta_sv_L(self, T):
         A = 999.83952
@@ -522,9 +521,9 @@ class Common_Properties():
 
     def k_ratio(self, H2O, H2O2, O2):
 
-        CpG = H2O.y * H2O.cpg * constant.MH2O + H2O2.y * H2O2.cpg * constant.MH2O2 + O2.y * O2.cpg * constant.MO2
+        CpG = H2O.y * H2O.cpg * cc.MH2O + H2O2.y * H2O2.cpg * cc.MH2O2 + O2.y * O2.cpg * cc.MO2
 
-        CvG = CpG - constant.R
+        CvG = CpG - cc.R
 
         self.k = CpG / CvG
 
@@ -551,9 +550,7 @@ class Kinetics():
         #  Solve for
         self.rate = None
 
-        #  Inputs
-        self.kf = kf
-        self.T = temperature
+        self.kinetics(temperature, kf)
 
-    def kinetics(self):
-        self.rate = constant.A_ar * self.kf * np.exp(-constant.Ea / c2k(self.T))
+    def kinetics(self, T, kf):
+        self.rate = cc.A_ar * kf * np.exp(-cc.Ea / c2k(T))

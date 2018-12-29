@@ -13,6 +13,10 @@ MH2O2 = 34.0147
 R = 8.3145
 g = 9.81
 
+#  ERS Properties
+RD_Kd = 0.67
+
+
 # System properties
 Patm = 101.325
 
