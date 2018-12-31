@@ -184,7 +184,7 @@ class Initial_Conditions(Equilibrate):
         self.equilibrate(data)
 
 class Update_Conditions(Equilibrate):
-    def __init__(self, scenario, temperature, nH2O, nH2O2, nO2, data):
+    def __init__(self, scenario, temperature, nH2O, nH2O2, nO2, data, k):
         """
             Initializes instance for updating equilibrium conditions of the system.
 
@@ -239,20 +239,22 @@ class Update_Conditions(Equilibrate):
 
         self.transform_data = None
 
+        self.mR = self.nH2O * cc.MH2O + self.nH2O2 * cc.MH2O2 + self.nO2 * cc.MO2
+
         self.ntotal = self.nH2O + self.nH2O2 + self.nO2
         self.zH2O = self.nH2O / (self.nH2O + self.nH2O2 + self.nO2)
         self.zH2O2 = self.nH2O2 / (self.nH2O + self.nH2O2 + self.nO2)
         self.zO2 = self.nO2 / (self.nH2O + self.nH2O2 + self.nO2)
 
-        self.convert_data(data)
+        self.convert_data(data, k)
         self.update_conditions()
 
-    def convert_data(self, data):
+    def convert_data(self, data, k):
         """
             Transform input data array into parsable conditions for equilibrate solver.
         """
-        self.transform_data = [data[1][9], data[2][9], data[1][10], data[2][10], data[3][6], data[4][6], data[4][7],
-                               data[4][4], data[1][13], data[2][13], data[4][8], data[3][1]]
+        self.transform_data = [data[1][k - 1][9], data[2][k - 1][9], data[1][k - 1][10], data[2][k - 1][10], data[3][k - 1][6], data[4][k - 1][6], data[4][k - 1][7],
+                               data[4][k - 1][4], data[1][k - 1][13], data[2][k - 1][13], data[4][k - 1][8], data[3][k - 1][1]]
 
     def update_conditions(self):
         """
