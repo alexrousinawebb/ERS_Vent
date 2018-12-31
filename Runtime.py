@@ -15,7 +15,7 @@ D_RD = 2
 P_RD = 1000
 P_BPR = 200
 
-scen = Scenario(VR, T_rxn, t_rxn, XH2O2, mR, D_RD, P_RD, P_BPR)
+scen = Scenario(VR, T_rxn, t_rxn, XH2O2, mR, D_RD, P_RD, P_BPR, plot_rt=True)
 
 ode1 = ODE.ODE(scen)
 ode1.initialize()
