@@ -27,6 +27,8 @@ class ODE(ERS.ERS):
         self.scenario = scen
         self.pid_jacket = None
         self.ramp_rate = None
+        self.n_vent_vap = None
+        self.n_vent_TF = None
         self.n_vent = 0
         self.critical_flow = False
         self.xe = 1
@@ -221,8 +223,9 @@ class ODE(ERS.ERS):
         """
             Calculate reactor vent (BPR/RD/PRV) flow for various scenarios.
         """
+        self.ventflow(self.data[0][k - 1][0], self.scenario.P_BPR)
+
         if self.cp.P > self.scenario.P_BPR:
-            self.n_vent = self.ventflow(self.H2O, self.H2O2, self.O2, self.cp,
-                                        self.data[0][k - 1][0], self.scenario.P_BPR)
+
         else:
             self.n_vent = 0

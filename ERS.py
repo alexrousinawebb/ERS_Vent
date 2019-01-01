@@ -7,6 +7,7 @@ Module containing DIERS technology for single phase and two-phase flow.
 import Constant_Lib as cc
 import numpy as np
 from Conversion import c2k, A_relief
+from scipy import optimize as opt
 
 class ERS():
     def critical_pressure(self, k, P):
@@ -30,7 +31,7 @@ class ERS():
 
             C = 520 * np.sqrt(self.cp.k * ((2 / (self.cp.k + 1)) ** ((self.cp.k + 1) / (self.cp.k - 1))))
 
-            W = ((A_relief(self.scenario.D_BPR) * 1000000 * C * Kd * self.cp.P / 13160) * np.sqrt(
+            self.n_vent_vap = ((A_relief(self.scenario.D_BPR) * 1000000 * C * Kd * self.cp.P / 13160) * np.sqrt(
                 Mw / (c2k(T) * Z)) * 1000 / 3600) / Mw
 
         elif self.critical_flow is False:
@@ -40,10 +41,8 @@ class ERS():
             F2 = np.sqrt((self.cp.k / (self.cp.k - 1)) * r ** (2 / self.cp.k) *
                          ((1 - r ** ((self.cp.k - 1) / self.cp.k)) / (1 - r)))
 
-            W = (((A_relief(self.scenario.D_BPR) * 1000000 * F2 * Kd / 17.9) * np.sqrt(
+            self.n_vent_vap = (((A_relief(self.scenario.D_BPR) * 1000000 * F2 * Kd / 17.9) * np.sqrt(
                 Mw * self.cp.P * (self.cp.P - P_discharge) / (Z * c2k(T)))) * 1000 / 3600) / Mw
-
-        return W
 
     def voidfrac(self, z):
 
@@ -58,55 +57,35 @@ class ERS():
 
         return F
 
-    def two_phase(self, T, P_discharge, D_RD, Dv, Kd_RD, data, flag):
+    def two_phase(self):
 
-        Mw = self.H2O.y * cc.MH2O + self.H2O2.y * cc.MH2O2 + self.O2.y * cc.MO2  # (g/mol)
+        self.jgx = (A_relief(self.scenario.D_RD) * self.n_vent_vap) / (self.pG * A_relief(self.scenario.D * 39.3701) * 1000)
 
-        Z = self.H2O.Z * self.H2O.y + self.H2O2.Z * self.H2O2.y + self.O2.Z * self.O2.y
-
-        if P_discharge > P_crit(P_discharge, T, yH2O, yH2O2, yO2):
-            r = P_discharge / P
-
-            F2 = sqrt((k / (k - 1)) * (r ** (2 / k)) * ((1 - r ** ((k - 1) / k)) / (1 - r)))
-
-            W_vap = (F2 * Kd_RD / 17.9) * sqrt((Mw * P * (P - P_discharge)) / (Z * C2K(T))) * (
-                        1000000 / 3600)  # (kg/(m**2*s))
-        else:
-            C = 520 * sqrt(k * ((2 / (k + 1)) ** ((k + 1) / (k - 1))))
-
-            W_vap = ((C * P * Kd_RD / 13160) * sqrt(Mw / (C2K(T) * Z))) * (1000000 / 3600)
-
-        jgx = (A_relief(D_RD) * W_vap) / (pG * A_relief(Dv * 39.3701) * 1000)
-
-        if flag == 1:  # churn turbulent
+        if self.scenario.flow_regime is 'churn-turbulent':
             Ux_factor = 1.53
-        else:  # bubbly
+        elif self.scenario.flow_regime is 'bubbly':
             Ux_factor = 1.18
 
-        Ux = Ux_factor * (sigma * g * 1000 * (pL - pG)) ** (1 / 4) / sqrt(1000 * pL)  # Churn-turbulent regime
+        self.Ui = Ux_factor * (self.cp.st * cc.g * 1000 * (self.pL - self.pG)) ** (1 / 4) / np.sqrt(1000 * self.pL)
 
-        alpha = fsolve(voidfrac, 0.8, args=(jgx, Ux, flag))
+        alpha = opt.fsolve(self.voidfrac, 0.8)
 
-        alphaves = (VR - VL) / VR
+        alphaves = (self.scenario.VR - self.cp.VL) / self.scenario.VR
 
         if alpha <= alphaves:
-            TF = 0
-            Xm = empty(1)
-            jgi = empty(1)
+            self.TF = 0
+            self.Xm = np.empty(1)
+            self.jgi = np.empty(1)
         else:
-            TF = 1
+            self.TF = 1
 
             C0 = 1.5
 
-            if flag == 1:  # churn turbulent
-                jgi = 2 * alphaves * Ux / (1 - C0 * alphaves)
+            if self.scenario.flow_regime is 'churn-turbulent':
+                self.jgi = 2 * alphaves * Ux / (1 - C0 * alphaves)
                 a_m = 2 * alphaves / (1 + C0 * alphaves)
-            else:  # bubbly
-                jgi = alphaves * (1 - alphaves) ** 2 * Ux / ((1 - alphaves ** 3) * (1 - C0 * alphaves))
+            elif self.scenario.flow_regime is 'bubbly':
+                self.jgi = alphaves * (1 - alphaves) ** 2 * Ux / ((1 - alphaves ** 3) * (1 - C0 * alphaves))
                 a_m = alphaves
 
-            Xm = a_m * pG / (a_m * pG + (1 - a_m) * pL)
-
-        n_vent = W_vap * A_relief(D_RD) * 1000 / Mw
-
-        return [TF, n_vent, jgi, Xm]
+            self.Xm = a_m * self.pG / (a_m * self.pG + (1 - a_m) * self.pL)
