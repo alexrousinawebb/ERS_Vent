@@ -6,9 +6,11 @@ Module for performing VLE calculations.
 
 import numpy as np
 from scipy import optimize as opt
-from Conversion import c2k
+
 import Constant_Lib as cc
 import Property_Lib as pl
+from Conversion import c2k
+
 
 class Solvers():
     def VLE(self, z):

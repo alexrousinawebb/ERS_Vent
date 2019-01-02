@@ -4,15 +4,17 @@ ORDINARY DIFFERENTIAL EQUATIONS ODE
 Module containing reactor system ODEs for solving.
 """
 
-from Conversion import c2k, A_wet
-import Constant_Lib as cc
+import matplotlib.pyplot as plt
 import numpy as np
-import Property_Lib as pl
-import VLE
 from scipy import integrate as integ
 from simple_pid import PID
+
+import Constant_Lib as cc
 import ERS
-import matplotlib.pyplot as plt
+import Property_Lib as pl
+import VLE
+from Conversion import c2k, A_wet
+
 
 class ODE(ERS.ERS):
     def __init__(self, scen):
@@ -37,6 +39,8 @@ class ODE(ERS.ERS):
         self.Cp = None
         self.pL = None
         self.pG = None
+        self.vG = None
+        self.vL = None
         self.jgx = None
         self.Ui = None
 
@@ -74,7 +78,7 @@ class ODE(ERS.ERS):
     def integrate(self):
         k = 1
 
-        while self.solver.successful() and self.solver.t <= self.t[-1]:
+        while self.solver.successful() and self.solver.t <= self.t[-1] and self.cp.P <= self.scenario.MAWP:
 
             if self.t[k] / 3600 >= 9:
                 self.pid_jacket.setpoint = self.scenario.T0
@@ -88,9 +92,6 @@ class ODE(ERS.ERS):
             self.solver.integrate(self.t[k])
             self.data[0][k][:] = self.solver.y
             self.store_data(k)
-
-            if self.cp.P >= self.scenario.P_RD:
-                break
 
             if self.scenario.plot_rt is True and k % 60 == 0:
                 self.plot_realtime(k)
@@ -137,9 +138,11 @@ class ODE(ERS.ERS):
 
         self.pL = self.H2O.density * self.H2O.x + self.H2O2.density * self.H2O2.x  # Average liquid density (kg/L)
 
-        vL = 1 / self.pL  # Average specific gravity (L/kg)
+        self.vL = 1 / self.pL  # Average specific gravity (L/kg)
 
-        vfg = (1 / self.pG) - (1 / self.pL)  # Change in specific volume upon vaporization (L/kg)
+        self.vG = 1 / self.pG
+
+        vfg = self.vG - self.vL  # Change in specific volume upon vaporization (L/kg)
 
         #  Calculate vent flow rate
         self.vent_calc(k)
@@ -156,7 +159,7 @@ class ODE(ERS.ERS):
 
         Q_HEx = self.scenario.Ux * A_wet(self.cp.VL, self.scenario.D) * (T - Tj)
 
-        Q_vap = ((vL / vfg) + 1) * self.cp.dhvap * self.n_vent * (self.H2O.y + self.H2O2.y) * cc.MH2O
+        Q_vap = ((self.vL / vfg) + 1) * self.cp.dhvap * self.n_vent * (self.H2O.y + self.H2O2.y) * cc.MH2O
 
         Xp = ((self.cp.dhvap - self.cp.P * vfg) / (vfg * self.Cp * 1000)) * (x * self.cp.dvGdt / 1000 + (1 - x) *
                                                                         self.cp.dvLdt / 1000)
@@ -223,9 +226,26 @@ class ODE(ERS.ERS):
         """
             Calculate reactor vent (BPR/RD/PRV) flow for various scenarios.
         """
-        self.ventflow(self.data[0][k - 1][0], self.scenario.P_BPR)
+        if self.scenario.P_RD >= self.cp.P > self.scenario.P_BPR and self.scenario.BPR == True:
+            self.ventflow(self.data[0][k - 1][0], self.scenario.P_BPR)
+            self.n_vent = self.n_vent_vap
+            self.xe = 1
 
-        if self.cp.P > self.scenario.P_BPR:
+        elif self.cp.P > self.scenario.P_RD and self.scenario.PRV == True:
+            self.ventflow(self.data[0][k - 1][0], cc.Patm)
+            self.two_phase()
+
+            if self.TF == False:
+                self.n_vent = self.n_vent_vap
+                self.xe = 1
+            elif self.TF == True:
+                self.flow_twophase(self.data[0][k - 1][0],cc.Patm)
+
+            if self.xe > 1:
+                self.xe = 1
+            elif self.xe < 0:
+                self.xe = 0
 
         else:
             self.n_vent = 0
+            self.xe = 1

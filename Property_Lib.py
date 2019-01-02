@@ -26,10 +26,11 @@ Common:
 
 import numpy as np
 from scipy import optimize as opt
+
+import Constant_Lib as cc
 from Conversion import c2k
 from EOS import RK_EOS
-import Constant_Lib as cc
-import VLE
+
 
 class Water(RK_EOS):
     def __init__(self, temperature=25, pressure=101, vle=None):
