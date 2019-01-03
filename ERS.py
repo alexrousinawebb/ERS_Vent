@@ -4,12 +4,10 @@ EMERGENCY RELIEF SYSTEM ERS
 Module containing DIERS technology for single phase and two-phase flow.
 """
 
-import numpy as np
-from scipy import optimize as opt
-
 import Constant_Lib as cc
+import numpy as np
 from Conversion import c2k, A_relief
-
+from scipy import optimize as opt
 
 class ERS():
     def critical_pressure(self, k, P):

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import integrate as integ
 from simple_pid import PID
+from pprint import pprint as pprint
 
 import Constant_Lib as cc
 import ERS
@@ -31,6 +32,7 @@ class ODE(ERS.ERS):
         self.ramp_rate = None
         self.n_vent_vap = None
         self.n_vent_TF = None
+        self.venting = None
         self.n_vent = 0
         self.critical_flow = False
         self.xe = 1
@@ -45,7 +47,7 @@ class ODE(ERS.ERS):
         self.Ui = None
 
         #  Generate timespan mesh for integration
-        tmax = self.scenario.rxn_time * 60 * 60
+        tmax = (self.scenario.rxn_time + self.scenario.cool_time) * 60 * 60
         self.N = int(tmax)
         self.t = np.linspace(0, tmax, self.N)
 
@@ -78,13 +80,15 @@ class ODE(ERS.ERS):
     def integrate(self):
         k = 1
 
-        while self.solver.successful() and self.solver.t <= self.t[-1] and self.cp.P <= self.scenario.MAWP:
+        while self.solver.successful() and self.solver.t < self.t[-1] and self.cp.P <= self.scenario.MAWP:
 
-            if self.t[k] / 3600 >= 9:
+            self.venting = False
+
+            if self.t[k] / 3600 >= self.scenario.rxn_time:
                 self.pid_jacket.setpoint = self.scenario.T0
 
-                if self.cp.P <= cc.Patm:
-                    break
+            if self.cp.P >= self.scenario.P_RD:
+                break
 
             self.ramp_rate = self.pid_jacket(self.data[0][k - 1][0])
             self.solver.set_f_params(k)
@@ -98,7 +102,8 @@ class ODE(ERS.ERS):
 
             k += 1
 
-        plt.show()
+        self.t = self.t[:k]
+        self.data = [i[:k, :] for i in self.data]
 
     def rxn_vent_ode(self, t, Y, k):
         """
@@ -194,24 +199,75 @@ class ODE(ERS.ERS):
         """
             Plot integration parameters in real time during integration routine.
         """
-        plt.figure(1)
-        plt.scatter(self.t[k], self.data[0][k][0], color='r')
-        plt.scatter(self.t[k], self.data[0][k][1], color='b')
+        plt.figure(1, figsize=(15,10))
 
-        plt.figure(2)
-        plt.scatter(self.t[k], self.data[1][k][9], color='r')
-        plt.scatter(self.t[k], self.data[2][k][9], color='b')
-        plt.scatter(self.t[k], self.data[1][k][10], color='g')
-        plt.scatter(self.t[k], self.data[2][k][10], color='y')
-        plt.scatter(self.t[k], self.data[3][k][6], color='k')
+        plt.subplot(2, 2, 1)
+        plt.scatter(self.t[k], self.data[0][k][0], color='r', s=1)
+        plt.scatter(self.t[k], self.data[0][k][1], color='b', s=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Temperature (C)')
+        plt.title("Temperature Profile")
+        plt.legend(['Reactor', 'Jacket'])
 
-        plt.figure(3)
-        plt.scatter(self.t[k], self.data[1][k][13], color='r')
-        plt.scatter(self.t[k], self.data[2][k][13], color='b')
-        # plt.scatter(self.t[k], self.data[3][k][])
-        plt.scatter(self.t[k], self.data[4][k][4], color='g')
+        plt.subplot(2, 2, 2)
+        plt.scatter(self.t[k], self.data[1][k][9]*100, color='r', s=1)
+        plt.scatter(self.t[k], self.data[2][k][9]*100, color='b', s=1)
+        plt.scatter(self.t[k], self.data[1][k][10]*100, color='g', s=1)
+        plt.scatter(self.t[k], self.data[2][k][10]*100, color='y', s=1)
+        plt.scatter(self.t[k], self.data[3][k][6]*100, color='k', s=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Mole Fraction (%)')
+        plt.title("Reactor Composition")
+        plt.legend(['Water (l)', 'Hydrogen Peroxide (l)', 'Water (v)', 'Hydrogen Peroxide (v)', 'Oxygen (v)'])
+
+        plt.subplot(2, 2, 3)
+        plt.scatter(self.t[k], self.data[1][k][13], color='r', s=1)
+        plt.scatter(self.t[k], self.data[2][k][13], color='b', s=1)
+        plt.scatter(self.t[k], self.data[3][k][9], color='k', s=1)
+        plt.scatter(self.t[k], self.data[4][k][4], color='g', s=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Pressure (kPa)')
+        plt.title("Reactor Pressure")
+        plt.legend(['Water', 'Hydrogen Peroxide', 'Oxygen', 'Total'])
 
         plt.pause(0.05)
+
+    def plot_vals(self):
+        """
+            Plot integration parameters in real time during integration routine.
+        """
+        plt.figure(2, figsize=(15,10))
+
+        plt.subplot(2, 2, 1)
+        plt.plot(self.t[:], [i[0] for i in self.data[0]], color='r')
+        plt.plot(self.t[:], [i[1] for i in self.data[0]], color='b')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Temperature (C)')
+        plt.title("Temperature Profile")
+        plt.legend(['Reactor', 'Jacket'])
+
+        plt.subplot(2, 2, 2)
+        plt.plot(self.t[:], [i[9] for i in self.data[1]], color='r')
+        plt.plot(self.t[:], [i[9] for i in self.data[2]], color='b')
+        plt.plot(self.t[:], [i[10] for i in self.data[1]], color='g')
+        plt.plot(self.t[:], [i[10] for i in self.data[2]], color='y')
+        plt.plot(self.t[:], [i[6] for i in self.data[3]], color='k')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Mole Fraction (%)')
+        plt.title("Reactor Composition")
+        plt.legend(['Water (l)', 'Hydrogen Peroxide (l)', 'Water (v)', 'Hydrogen Peroxide (v)', 'Oxygen (v)'])
+
+        plt.subplot(2, 2, 3)
+        plt.plot(self.t[:], [i[13] for i in self.data[1]], color='r')
+        plt.plot(self.t[:], [i[13] for i in self.data[2]], color='b')
+        plt.plot(self.t[:], [i[9] for i in self.data[3]], color='k')
+        plt.plot(self.t[:], [i[4] for i in self.data[4]], color='g')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Pressure (kPa)')
+        plt.title("Reactor Pressure")
+        plt.legend(['Water', 'Hydrogen Peroxide', 'Oxygen', 'Total'])
+
+        plt.show()
 
     def pid_config(self):
         """
@@ -226,25 +282,30 @@ class ODE(ERS.ERS):
         """
             Calculate reactor vent (BPR/RD/PRV) flow for various scenarios.
         """
-        if self.scenario.P_RD >= self.cp.P > self.scenario.P_BPR and self.scenario.BPR == True:
+        if self.scenario.P_RD > self.cp.P > self.scenario.P_BPR and self.scenario.BPR == True:
             self.ventflow(self.data[0][k - 1][0], self.scenario.P_BPR)
             self.n_vent = self.n_vent_vap
             self.xe = 1
 
-        elif self.cp.P > self.scenario.P_RD and self.scenario.PRV == True:
+        elif self.cp.P >= self.scenario.P_RD and self.scenario.PRV == True and self.venting == True:
             self.ventflow(self.data[0][k - 1][0], cc.Patm)
-            self.two_phase()
 
-            if self.TF == False:
+            if self.scenario.TF_vent is True:
+                self.two_phase()
+
+                if self.TF == False:
+                    self.n_vent = self.n_vent_vap
+                    self.xe = 1
+                elif self.TF == True:
+                    self.flow_twophase(self.data[0][k - 1][0],cc.Patm)
+
+                if self.xe > 1:
+                    self.xe = 1
+                elif self.xe < 0:
+                    self.xe = 0
+            elif self.scenario.TF_vent is False:
                 self.n_vent = self.n_vent_vap
                 self.xe = 1
-            elif self.TF == True:
-                self.flow_twophase(self.data[0][k - 1][0],cc.Patm)
-
-            if self.xe > 1:
-                self.xe = 1
-            elif self.xe < 0:
-                self.xe = 0
 
         else:
             self.n_vent = 0

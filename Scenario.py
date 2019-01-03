@@ -8,10 +8,13 @@ import numpy as np
 from Conversion import g2l
 
 class Scenario():
-    def __init__(self, reactor_volume, set_temp, reaction_time, H2O2_massfraction, charge_mass, D_RD=None,
+    def __init__(self,
+                 reactor_volume, set_temp, reaction_time, H2O2_massfraction, charge_mass, D_RD=None,
                  P_RD=None, P_BPR=None, D_BPR=0.5, BPR_max_Cv=5.5, start_pressure=101.325, kf=1, start_temp=25,
                  heat_transfer_coefficient=450, aspect_ratio=1.5, MAWP=100000, max_rate_jacket=2, integrator='lsoda',
-                 plot_rt=False, Kp=0.016, Ki=0, Kd=0, flow_regime='bubbly', BPR=True, RD=True, PRV=False):
+                 plot_rt=False, Kp=0.016, Ki=0, Kd=0, flow_regime='bubbly', BPR=True, RD=True, PRV=False, cooldown_time=0,
+                 TF_vent=True
+                 ):
         """
             Initializes scenario instance.
 
@@ -59,6 +62,7 @@ class Scenario():
         self.P_RD = P_RD
         self.P_BPR = P_BPR
         self.flow_regime = flow_regime
+        self.TF_vent = TF_vent
 
         #  Chemical Properties
         self.XH2O2 = H2O2_massfraction
@@ -70,6 +74,7 @@ class Scenario():
         self.rxn_time = reaction_time
         self.T0 = start_temp
         self.P0 = start_pressure
+        self.cool_time = cooldown_time
 
         #  PID Controller
         self.max_rate = max_rate_jacket
