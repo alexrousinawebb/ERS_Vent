@@ -11,8 +11,8 @@ class Scenario():
     def __init__(self,
                  reactor_volume, set_temp, reaction_time, H2O2_massfraction, charge_mass, D_RD=None,
                  P_RD=None, P_BPR=None, D_BPR=0.5, BPR_max_Cv=5.5, start_pressure=101.325, kf=1, start_temp=25,
-                 heat_transfer_coefficient=450, aspect_ratio=1.5, MAWP=100000, max_rate_jacket=2, integrator='lsoda',
-                 plot_rt=False, Kp=0.016, Ki=0, Kd=0, flow_regime='bubbly', BPR=True, RD=True, PRV=False, cooldown_time=0,
+                 heat_transfer_coefficient=450, aspect_ratio=1.5, MAWP=100000, max_rate_jacket=2,
+                 Kp=0.016, Ki=0, Kd=0, flow_regime='bubbly', BPR=True, RD=True, PRV=False, cooldown_time=0,
                  TF_vent=True
                  ):
         """
@@ -81,8 +81,4 @@ class Scenario():
         self.Kp = Kp
         self.Kd = Kd
         self.Ki = Ki
-
-        #  Miscellaneous
-        self.integrator = integrator
-        self.plot_rt = plot_rt
 

@@ -31,3 +31,6 @@ def A_wet(VL, Dv):
     hwet = (VL * 0.001) / (np.pi * (Dv / 2) ** 2)
 
     return np.pi * (Dv / 2) ** 2 + 2 * np.pi * (Dv / 2) * hwet
+
+def cv2kd(Cv, D):
+    return Cv / (27.66 * A_relief(D) * 1550)

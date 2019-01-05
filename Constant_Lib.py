@@ -16,7 +16,6 @@ g = 9.81
 #  ERS Properties
 RD_Kd = 0.67
 
-
 # System properties
 Patm = 101.325
 

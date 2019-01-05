@@ -8,13 +8,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import integrate as integ
 from simple_pid import PID
-from pprint import pprint as pprint
 
 import Constant_Lib as cc
 import ERS
 import Property_Lib as pl
 import VLE
-from Conversion import c2k, A_wet
+from Conversion import c2k, A_wet, cv2kd
 
 
 class ODE(ERS.ERS):
@@ -30,10 +29,9 @@ class ODE(ERS.ERS):
         self.scenario = scen
         self.pid_jacket = None
         self.ramp_rate = None
-        self.n_vent_vap = None
-        self.n_vent_TF = None
         self.venting = None
         self.n_vent = 0
+        self.n_vent_vap = None
         self.critical_flow = False
         self.xe = 1
         self.CpG = None
@@ -46,10 +44,11 @@ class ODE(ERS.ERS):
         self.jgx = None
         self.Ui = None
 
-        #  Generate timespan mesh for integration
-        tmax = (self.scenario.rxn_time + self.scenario.cool_time) * 60 * 60
-        self.N = int(tmax)
-        self.t = np.linspace(0, tmax, self.N)
+        self.data = None
+        self.t = None
+        self.plot_freq = None
+
+        self.tmax = (self.scenario.rxn_time + self.scenario.cool_time) * 60 * 60
 
         #  Initialize starting reaction conditions and compound objects
         ic = VLE.Initial_Conditions(self.scenario)
@@ -57,53 +56,91 @@ class ODE(ERS.ERS):
         self.H2O2 = pl.Hydrogen_Peroxide(self.scenario.T0, ic.P, ic)
         self.O2 = pl.Oxygen(self.scenario.T0, ic.P, ic)
         self.cp = pl.Common_Properties(self.scenario.T0, ic, self.H2O, self.H2O2, self.O2)
-        self.Y0 = [self.scenario.T0, self.scenario.T0, self.H2O.n, self.H2O2.n, self.O2.n]
+
+    def initialize_heatup(self, integrator='lsoda'):
+        """
+            Initializes ode solver for reactor heatup integration.
+        """
+
+        Y0 = [self.scenario.T0, self.scenario.T0, self.H2O.n, self.H2O2.n, self.O2.n]
+
+        #  Generate timespan mesh for integration
+        N = int(self.tmax)
+        self.t = np.linspace(0, self.tmax, N)
 
         # Generate data storage list of arrays
-        self.data = [np.zeros((self.N, len(self.Y0))), np.zeros((self.N, len(vars(self.H2O)))),
-                         np.zeros((self.N, len(vars(self.H2O2)))), np.zeros((self.N, len(vars(self.O2)))),
-                         np.zeros((self.N, len(vars(self.cp))))]
+        self.data = [np.zeros((N, len(Y0))), np.zeros((N, len(vars(self.H2O)))),
+                     np.zeros((N, len(vars(self.H2O2)))), np.zeros((N, len(vars(self.O2)))),
+                     np.zeros((N, len(vars(self.cp))))]
 
         #  Write initial conditions to data storage array
         self.store_data(0)
-        self.data[0][0][:] = self.Y0
+        self.data[0][0][:] = Y0
 
-    def initialize(self):
-        """
-            Initializes ode solver for integration.
-        """
+        #  Configure ODE solver
         self.solver = integ.ode(self.rxn_vent_ode)
-        self.solver.set_integrator(self.scenario.integrator)
-        self.solver.set_initial_value(self.Y0, self.t[0])
+        self.solver.set_integrator(integrator, max_step=1)
+        self.solver.set_initial_value(Y0, self.t[0])
         self.pid_config()
 
-    def integrate(self):
-        k = 1
+        self.plot_freq = 30
+        self.venting = False
+        self.i = 1
 
-        while self.solver.successful() and self.solver.t < self.t[-1] and self.cp.P <= self.scenario.MAWP:
+    def initialize_vent(self, integrator='lsoda'):
+        """
+            Initializes ode solver for reactor venting integration.
+        """
 
-            self.venting = False
+        #  Pad timespan mesh for integration
+        N = int((self.tmax - self.t[self.i - 1]) * 50)
+        self.t = np.append(self.t, np.linspace(self.t[self.i - 1] + (self.tmax - self.t[self.i - 1])/N, self.tmax, N - 1))
+
+        #  Pad data storage list of arrays
+        self.data = [np.pad(i, ((0, N - 1), (0, 0)), 'constant') for i in self.data]
+
+        #  Configure ODE solver
+        Y0 = [self.data[0][self.i - 1, :]]
+        self.solver = integ.ode(self.rxn_vent_ode)
+        self.solver.set_integrator(integrator, max_step=0.01)
+        self.solver.set_initial_value(Y0[0].tolist(), self.t[self.i - 1])
+
+        self.venting = True
+        self.plot_freq = 60
+
+    def integrate(self, plot_rt=False):
+        """
+            Integrates ODEs for reactor heatup.
+        """
+
+        k = self.i
+
+        while self.solver.successful() and self.solver.t < self.t[-1]:
 
             if self.t[k] / 3600 >= self.scenario.rxn_time:
                 self.pid_jacket.setpoint = self.scenario.T0
 
-            if self.cp.P >= self.scenario.P_RD:
+            if self.venting is False and self.cp.P >= self.scenario.P_RD:
                 break
 
-            self.ramp_rate = self.pid_jacket(self.data[0][k - 1][0])
+            if self.venting is True and (self.cp.P >= self.scenario.MAWP or self.cp.VL <= 0 or self.cp.P <= cc.Patm):
+                break
+
+            self.ramp_rate = self.pid_jacket(self.data[0][k - 1, 0])
             self.solver.set_f_params(k)
 
             self.solver.integrate(self.t[k])
-            self.data[0][k][:] = self.solver.y
+            self.data[0][k, :] = self.solver.y
             self.store_data(k)
 
-            if self.scenario.plot_rt is True and k % 60 == 0:
+            if plot_rt is True and k % self.plot_freq == 0:
                 self.plot_realtime(k)
 
             k += 1
 
         self.t = self.t[:k]
         self.data = [i[:k, :] for i in self.data]
+        self.i = k
 
     def rxn_vent_ode(self, t, Y, k):
         """
@@ -150,7 +187,7 @@ class ODE(ERS.ERS):
         vfg = self.vG - self.vL  # Change in specific volume upon vaporization (L/kg)
 
         #  Calculate vent flow rate
-        self.vent_calc(k)
+        self.vent_calc(T)
 
         #  Differential equations for change in molar amount of components (mol/s)
         dnH2O_dt = kin.rate * nH2O2 - (self.H2O.y * self.xe + self.H2O.x * (1 - self.xe)) * self.n_vent
@@ -167,7 +204,7 @@ class ODE(ERS.ERS):
         Q_vap = ((self.vL / vfg) + 1) * self.cp.dhvap * self.n_vent * (self.H2O.y + self.H2O2.y) * cc.MH2O
 
         Xp = ((self.cp.dhvap - self.cp.P * vfg) / (vfg * self.Cp * 1000)) * (x * self.cp.dvGdt / 1000 + (1 - x) *
-                                                                        self.cp.dvLdt / 1000)
+                                                                             self.cp.dvLdt / 1000)
 
         dT_dt = (Q_rxn - Q_HEx - Q_vap) / (mR * self.Cp * (1 - Xp))
 
@@ -201,34 +238,55 @@ class ODE(ERS.ERS):
         """
         plt.figure(1, figsize=(15,10))
 
-        plt.subplot(2, 2, 1)
-        plt.scatter(self.t[k], self.data[0][k][0], color='r', s=1)
-        plt.scatter(self.t[k], self.data[0][k][1], color='b', s=1)
+        plt.subplot(2, 3, 1)
+        plt.scatter(k, self.data[0][k][0], color='r', s=1)
+        plt.scatter(k, self.data[0][k][1], color='b', s=1)
         plt.xlabel('Time (s)')
         plt.ylabel('Temperature (C)')
         plt.title("Temperature Profile")
         plt.legend(['Reactor', 'Jacket'])
 
-        plt.subplot(2, 2, 2)
-        plt.scatter(self.t[k], self.data[1][k][9]*100, color='r', s=1)
-        plt.scatter(self.t[k], self.data[2][k][9]*100, color='b', s=1)
-        plt.scatter(self.t[k], self.data[1][k][10]*100, color='g', s=1)
-        plt.scatter(self.t[k], self.data[2][k][10]*100, color='y', s=1)
-        plt.scatter(self.t[k], self.data[3][k][6]*100, color='k', s=1)
+        plt.subplot(2, 3, 2)
+        plt.scatter(k, self.H2O.x*100, color='r', s=1)
+        plt.scatter(k, self.H2O2.x*100, color='b', s=1)
+        plt.scatter(k, self.H2O.y*100, color='g', s=1)
+        plt.scatter(k, self.H2O2.y*100, color='y', s=1)
+        plt.scatter(k, self.O2.y*100, color='k', s=1)
         plt.xlabel('Time (s)')
         plt.ylabel('Mole Fraction (%)')
         plt.title("Reactor Composition")
         plt.legend(['Water (l)', 'Hydrogen Peroxide (l)', 'Water (v)', 'Hydrogen Peroxide (v)', 'Oxygen (v)'])
 
-        plt.subplot(2, 2, 3)
-        plt.scatter(self.t[k], self.data[1][k][13], color='r', s=1)
-        plt.scatter(self.t[k], self.data[2][k][13], color='b', s=1)
-        plt.scatter(self.t[k], self.data[3][k][9], color='k', s=1)
-        plt.scatter(self.t[k], self.data[4][k][4], color='g', s=1)
+        plt.subplot(2, 3, 3)
+        plt.scatter(k, self.H2O.P, color='r', s=1)
+        plt.scatter(k, self.H2O2.P, color='b', s=1)
+        plt.scatter(k, self.O2.P, color='k', s=1)
+        plt.scatter(k, self.cp.P, color='g', s=1)
         plt.xlabel('Time (s)')
         plt.ylabel('Pressure (kPa)')
         plt.title("Reactor Pressure")
         plt.legend(['Water', 'Hydrogen Peroxide', 'Oxygen', 'Total'])
+
+        plt.subplot(2, 3, 4)
+        plt.scatter(k, self.cp.VL, color='r', s=1)
+        plt.scatter(k, self.cp.VG, color='b', s=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Volume (L)')
+        plt.title("Reactor Volume")
+        plt.legend(['Liquid', 'Headspace'])
+
+
+        plt.subplot(2, 3, 5)
+        plt.scatter(k, self.n_vent, color='r', s=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Flow Rate (mol/s)')
+        plt.title("Vent Flow")
+
+        plt.subplot(2, 3, 6)
+        plt.scatter(k, self.xe, color='b', s=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('Quality')
+        plt.title("Quality")
 
         plt.pause(0.05)
 
@@ -238,34 +296,42 @@ class ODE(ERS.ERS):
         """
         plt.figure(2, figsize=(15,10))
 
-        plt.subplot(2, 2, 1)
-        plt.plot(self.t[:], [i[0] for i in self.data[0]], color='r')
-        plt.plot(self.t[:], [i[1] for i in self.data[0]], color='b')
+        plt.subplot(2, 3, 1)
+        plt.plot([i[0] for i in self.data[0]], color='r')
+        plt.plot([i[1] for i in self.data[0]], color='b')
         plt.xlabel('Time (s)')
         plt.ylabel('Temperature (C)')
         plt.title("Temperature Profile")
         plt.legend(['Reactor', 'Jacket'])
 
-        plt.subplot(2, 2, 2)
-        plt.plot(self.t[:], [i[9] for i in self.data[1]], color='r')
-        plt.plot(self.t[:], [i[9] for i in self.data[2]], color='b')
-        plt.plot(self.t[:], [i[10] for i in self.data[1]], color='g')
-        plt.plot(self.t[:], [i[10] for i in self.data[2]], color='y')
-        plt.plot(self.t[:], [i[6] for i in self.data[3]], color='k')
+        plt.subplot(2, 3, 2)
+        plt.plot([i[9] for i in self.data[1]], color='r')
+        plt.plot([i[9] for i in self.data[2]], color='b')
+        plt.plot([i[10] for i in self.data[1]], color='g')
+        plt.plot([i[10] for i in self.data[2]], color='y')
+        plt.plot([i[6] for i in self.data[3]], color='k')
         plt.xlabel('Time (s)')
         plt.ylabel('Mole Fraction (%)')
         plt.title("Reactor Composition")
         plt.legend(['Water (l)', 'Hydrogen Peroxide (l)', 'Water (v)', 'Hydrogen Peroxide (v)', 'Oxygen (v)'])
 
-        plt.subplot(2, 2, 3)
-        plt.plot(self.t[:], [i[13] for i in self.data[1]], color='r')
-        plt.plot(self.t[:], [i[13] for i in self.data[2]], color='b')
-        plt.plot(self.t[:], [i[9] for i in self.data[3]], color='k')
-        plt.plot(self.t[:], [i[4] for i in self.data[4]], color='g')
+        plt.subplot(2, 3, 3)
+        plt.plot([i[13] for i in self.data[1]], color='r')
+        plt.plot([i[13] for i in self.data[2]], color='b')
+        plt.plot([i[9] for i in self.data[3]], color='k')
+        plt.plot([i[4] for i in self.data[4]], color='g')
         plt.xlabel('Time (s)')
         plt.ylabel('Pressure (kPa)')
         plt.title("Reactor Pressure")
         plt.legend(['Water', 'Hydrogen Peroxide', 'Oxygen', 'Total'])
+
+        plt.subplot(2, 3, 4)
+        plt.plot([i[8] for i in self.data[4]], color='r')
+        plt.plot([i[9] for i in self.data[4]], color='b')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Volume (L)')
+        plt.title("Reactor Volume")
+        plt.legend(['Liquid', 'Headspace'])
 
         plt.show()
 
@@ -278,34 +344,35 @@ class ODE(ERS.ERS):
                               output_limits=(-self.scenario.max_rate, self.scenario.max_rate),
                               auto_mode=True, sample_time=0.01)
 
-    def vent_calc(self, k):
+    def vent_calc(self, T):
         """
             Calculate reactor vent (BPR/RD/PRV) flow for various scenarios.
         """
-        if self.scenario.P_RD > self.cp.P > self.scenario.P_BPR and self.scenario.BPR == True:
-            self.ventflow(self.data[0][k - 1][0], self.scenario.P_BPR)
-            self.n_vent = self.n_vent_vap
-            self.xe = 1
 
-        elif self.cp.P >= self.scenario.P_RD and self.scenario.PRV == True and self.venting == True:
-            self.ventflow(self.data[0][k - 1][0], cc.Patm)
+        if self.venting is True and self.scenario.RD is True:
+            self.crit_flow(cc.Patm)
+            self.ventflow(T, cc.Patm, self.scenario.D_RD, cc.RD_Kd)
 
             if self.scenario.TF_vent is True:
                 self.two_phase()
 
-                if self.TF == False:
+                if self.TF is False:
                     self.n_vent = self.n_vent_vap
                     self.xe = 1
-                elif self.TF == True:
-                    self.flow_twophase(self.data[0][k - 1][0],cc.Patm)
+                elif self.TF is True:
+                    self.flow_twophase(cc.Patm)
 
-                if self.xe > 1:
-                    self.xe = 1
-                elif self.xe < 0:
-                    self.xe = 0
             elif self.scenario.TF_vent is False:
                 self.n_vent = self.n_vent_vap
                 self.xe = 1
+
+        elif self.scenario.BPR is True and self.scenario.P_RD > self.cp.P > self.scenario.P_BPR:
+            # self.crit_flow(self.scenario.P_BPR)
+            self.critical_flow = False
+            self.ventflow(T, self.scenario.P_BPR, self.scenario.D_BPR,
+                          cv2kd(self.scenario.BPR_max_Cv, self.scenario.D_BPR))
+            self.n_vent = self.n_vent_vap
+            self.xe = 1
 
         else:
             self.n_vent = 0

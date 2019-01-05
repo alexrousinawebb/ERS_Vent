@@ -10,13 +10,19 @@ from Conversion import c2k, A_relief
 from scipy import optimize as opt
 
 class ERS():
-    def critical_pressure(self, k, P):
+    def crit_flow(self, P_discharge):
         """
             Calculate the critical pressure for choked flow.
         """
-        return (2 / (k + 1)) ** (k / (k - 1)) * P
 
-    def ventflow(self, T, P_discharge):
+        P_crit = (2 / (self.cp.k + 1)) ** (self.cp.k / (self.cp.k - 1)) * self.cp.P
+
+        if P_discharge > P_crit:
+            self.critical_flow = True
+        else:
+            self.critical_flow = False
+
+    def ventflow(self, T, P_discharge, D, Kd):
         """
             Calculates the vent flow rate for all vapour venting scenarios.
         """
@@ -25,13 +31,11 @@ class ERS():
 
         Z = self.H2O.Z * self.H2O.y + self.H2O2.Z * self.H2O2.y + self.O2.Z * self.O2.y
 
-        Kd = self.scenario.BPR_max_Cv / (27.66 * A_relief(self.scenario.D_BPR) * 1550)
-
         if self.critical_flow is True:
 
             C = 520 * np.sqrt(self.cp.k * ((2 / (self.cp.k + 1)) ** ((self.cp.k + 1) / (self.cp.k - 1))))
 
-            self.n_vent_vap = ((A_relief(self.scenario.D_BPR) * 1000000 * C * Kd * self.cp.P / 13160) * np.sqrt(
+            self.n_vent_vap = ((A_relief(D) * 1000000 * C * Kd * self.cp.P / 13160) * np.sqrt(
                 Mw / (c2k(T) * Z)) * 1000 / 3600) / Mw
 
         elif self.critical_flow is False:
@@ -41,7 +45,7 @@ class ERS():
             F2 = np.sqrt((self.cp.k / (self.cp.k - 1)) * r ** (2 / self.cp.k) *
                          ((1 - r ** ((self.cp.k - 1) / self.cp.k)) / (1 - r)))
 
-            self.n_vent_vap = (((A_relief(self.scenario.D_BPR) * 1000000 * F2 * Kd / 17.9) * np.sqrt(
+            self.n_vent_vap = (((A_relief(D) * 1000000 * F2 * Kd / 17.9) * np.sqrt(
                 Mw * self.cp.P * (self.cp.P - P_discharge) / (Z * c2k(T)))) * 1000 / 3600) / Mw
 
     def voidfrac(self, z):
@@ -101,7 +105,7 @@ class ERS():
 
         return F
 
-    def flow_twophase(self, T, P_discharge):
+    def flow_twophase(self, P_discharge):
 
         Mw = (self.H2O.y * cc.MH2O + self.H2O2.y * cc.MH2O2 + self.O2.y * cc.MO2) * \
              (self.cp.nG / self.cp.ntotal) + (self.H2O.x * cc.MH2O + self.H2O2.x * cc.MH2O2) * \
@@ -131,4 +135,4 @@ class ERS():
                     A_relief(self.scenario.D_RD) * G_twophase - self.jgi * self.pG *
                     A_relief(self.scenario.D * 39.3701))) / (A_relief(self.scenario.D_RD) * G_twophase)
 
-        self.n_vent = G_twophase * self.scenario.Kd_RD * A_relief(self.scenario.D_RD) * 1000 / Mw
+        self.n_vent = G_twophase * cc.RD_Kd * A_relief(self.scenario.D_RD) * 1000 / Mw
