@@ -7,6 +7,8 @@ Module containing reactor system ODEs for solving.
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import integrate as integ
+from scipy import optimize as opt
+
 from simple_pid import PID
 
 import Constant_Lib as cc
@@ -15,8 +17,11 @@ import Property_Lib as pl
 import VLE
 from Conversion import c2k, A_wet, cv2kd
 
+class Stats:
+    def max_P(self):
+        return np.max([i[4] for i in self.data[4]])
 
-class ODE(ERS.ERS):
+class ODE(Stats, ERS.ERS):
     def __init__(self, scen):
         """
             Initializes instance for ordinary differential equation integration routine.
@@ -377,3 +382,20 @@ class ODE(ERS.ERS):
         else:
             self.n_vent = 0
             self.xe = 1
+
+class Prog(ODE):
+    def __init__(self, scen):
+        ODE.__init__(self, scen)
+
+    def run(self, D_RD):
+        self.scenario.D_RD = D_RD
+        ode1 = ODE(self.scenario)
+        ode1.initialize_heatup()
+        ode1.integrate(plot_rt=True)
+        ode1.initialize_vent()
+        ode1.integrate(plot_rt=False)
+
+        return self.max_P() - self.scenario.P_RD
+
+    def vent_opt(self):
+        return opt.newton(self.run, self.scenario.D_RD)
