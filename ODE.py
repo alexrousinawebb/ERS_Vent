@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import integrate as integ
 from scipy import optimize as opt
+from tqdm import tqdm
 
 from simple_pid import PID
 
@@ -88,7 +89,7 @@ class ODE(Stats, ERS.ERS):
         self.solver.set_initial_value(Y0, self.t[0])
         self.pid_config()
 
-        self.plot_freq = 30
+        self.plot_freq = 60
         self.venting = False
         self.i = 1
 
