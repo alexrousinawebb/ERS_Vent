@@ -53,6 +53,7 @@ class ODE(Stats, ERS.ERS):
         self.data = None
         self.t = None
         self.plot_freq = None
+        self.N = None
 
         self.tmax = (self.scenario.rxn_time + self.scenario.cool_time) * 60 * 60
 
@@ -71,13 +72,13 @@ class ODE(Stats, ERS.ERS):
         Y0 = [self.scenario.T0, self.scenario.T0, self.H2O.n, self.H2O2.n, self.O2.n]
 
         #  Generate timespan mesh for integration
-        N = int(self.tmax)
-        self.t = np.linspace(0, self.tmax, N)
+        self.N = int(self.tmax)
+        self.t = np.linspace(0, self.tmax, self.N)
 
         # Generate data storage list of arrays
-        self.data = [np.zeros((N, len(Y0))), np.zeros((N, len(vars(self.H2O)))),
-                     np.zeros((N, len(vars(self.H2O2)))), np.zeros((N, len(vars(self.O2)))),
-                     np.zeros((N, len(vars(self.cp))))]
+        self.data = [np.zeros((self.N, len(Y0))), np.zeros((self.N, len(vars(self.H2O)))),
+                     np.zeros((self.N, len(vars(self.H2O2)))), np.zeros((self.N, len(vars(self.O2)))),
+                     np.zeros((self.N, len(vars(self.cp))))]
 
         #  Write initial conditions to data storage array
         self.store_data(0)
@@ -85,7 +86,7 @@ class ODE(Stats, ERS.ERS):
 
         #  Configure ODE solver
         self.solver = integ.ode(self.rxn_vent_ode)
-        self.solver.set_integrator(integrator, max_step=1)
+        self.solver.set_integrator(integrator, max_step=10)
         self.solver.set_initial_value(Y0, self.t[0])
         self.pid_config()
 
@@ -99,11 +100,11 @@ class ODE(Stats, ERS.ERS):
         """
 
         #  Pad timespan mesh for integration
-        N = int((self.tmax - self.t[self.i - 1]) * 50)
-        self.t = np.append(self.t, np.linspace(self.t[self.i - 1] + (self.tmax - self.t[self.i - 1])/N, self.tmax, N - 1))
+        self.N = int((self.tmax - self.t[self.i - 1]) * 50)
+        self.t = np.append(self.t, np.linspace(self.t[self.i - 1] + (self.tmax - self.t[self.i - 1])/self.N, self.tmax, self.N - 1))
 
         #  Pad data storage list of arrays
-        self.data = [np.pad(i, ((0, N - 1), (0, 0)), 'constant') for i in self.data]
+        self.data = [np.pad(i, ((0, self.N - 1), (0, 0)), 'constant') for i in self.data]
 
         #  Configure ODE solver
         Y0 = [self.data[0][self.i - 1, :]]
@@ -121,32 +122,35 @@ class ODE(Stats, ERS.ERS):
 
         k = self.i
 
-        while self.solver.successful() and self.solver.t < self.t[-1]:
+        with tqdm(total=self.N) as pbar:
+            while self.solver.successful() and self.solver.t < self.t[-1]:
 
-            if self.t[k] / 3600 >= self.scenario.rxn_time:
-                self.pid_jacket.setpoint = self.scenario.T0
+                if self.t[k] / 3600 >= self.scenario.rxn_time:
+                    self.pid_jacket.setpoint = self.scenario.T0
 
-            if self.venting is False and self.cp.P >= self.scenario.P_RD:
-                break
+                if self.venting is False and self.cp.P >= self.scenario.P_RD:
+                    break
 
-            if self.venting is True and (self.cp.P >= self.scenario.MAWP or self.cp.VL <= 0 or self.cp.P <= cc.Patm):
-                break
+                if self.venting is True and (self.cp.P >= self.scenario.MAWP or self.cp.VL <= 0 or self.cp.P <= cc.Patm):
+                    break
 
-            self.ramp_rate = self.pid_jacket(self.data[0][k - 1, 0])
-            self.solver.set_f_params(k)
+                self.ramp_rate = self.pid_jacket(self.data[0][k - 1, 0])
+                self.solver.set_f_params(k)
 
-            self.solver.integrate(self.t[k])
-            self.data[0][k, :] = self.solver.y
-            self.store_data(k)
+                self.solver.integrate(self.t[k])
+                self.data[0][k, :] = self.solver.y
+                self.store_data(k)
 
-            if plot_rt is True and k % self.plot_freq == 0:
-                self.plot_realtime(k)
+                if plot_rt is True and k % self.plot_freq == 0:
+                    self.plot_realtime(k)
 
-            k += 1
+                k += 1
 
-        self.t = self.t[:k]
-        self.data = [i[:k, :] for i in self.data]
-        self.i = k
+                pbar.update(1)
+
+            self.t = self.t[:k]
+            self.data = [i[:k, :] for i in self.data]
+            self.i = k
 
     def rxn_vent_ode(self, t, Y, k):
         """

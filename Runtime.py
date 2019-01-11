@@ -651,11 +651,12 @@ class Logic(Questions):
             print(' ')
             ode1.integrate(plot_rt)
 
-            print('Initializing ERS...')
-            print(' ')
-            ode1.initialize_vent(integrator='vode')
-            ode1.integrate(plot_rt)
-            print(ode1.max_P())
+            if self.RD is True:
+                print('Initializing ERS...')
+                print(' ')
+                ode1.initialize_vent(integrator='vode')
+                ode1.integrate(plot_rt)
+
             ode1.plot_vals()
 
 class Menu(Logic):
