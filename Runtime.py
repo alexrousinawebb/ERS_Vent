@@ -10,6 +10,7 @@ import os
 import click
 import six
 from pyfiglet import figlet_format
+from prettytable import PrettyTable
 from PyInquirer import (Token, ValidationError, Validator,
                         style_from_dict, prompt)
 
@@ -73,7 +74,6 @@ class Sensitivity():
                 scenario.D_RD = i
             elif value == "Rupture Disc Burst Pressure":
                 scenario.P_RD = i
-                input('press a thing')
             elif value == "Backpressure Regulator Set-Point":
                 scenario.P_BPR = i
             elif value == "Hydrogen Peroxide Concentration":
@@ -126,6 +126,18 @@ class Sensitivity():
         plt.title("Maximum Vent Flow")
 
         plt.show()
+
+    def table_sensitivity(self, value, ranges):
+        t = PrettyTable()
+        column_names = [str(value), 'Maximum Pressure (kPa)', 'Maximum Temperature (deg C)', 'Maximum Conversion (%)',
+                         'Maximum Vent Flow Rate (mol/s)']
+        t.add_column(column_names[0], ranges)
+        t.add_column(column_names[1], [round(i, 2) for i in self.max_P])
+        t.add_column(column_names[2], [round(i, 2) for i in self.max_T])
+        t.add_column(column_names[3], [round(i, 2) for i in self.max_conversion])
+        t.add_column(column_names[4], [round(i, 2) for i in self.max_vent])
+        print(t)
+
 
 class Questions():
     def greeting(self):
@@ -432,7 +444,8 @@ class Questions():
                 'name': 'Sensitivity',
                 'message': 'Sensitivity Analysis Menu',
                 'choices': ['Configure Sensitivity', 'Configure Scenario', 'View Sensitivity Settings',
-                            'View Scenario Settings', 'Run Sensitivity', 'Return'],
+                            'View Scenario Settings', 'Run Sensitivity', 'View Sensitivity Results',
+                            'Return'],
             },
         ]
         answers = prompt(questions, style=style)
@@ -824,6 +837,8 @@ class Logic(Questions, Sensitivity):
                 self.view_scenario_menu()
             elif answers.get("Sensitivity") == "Run Sensitivity":
                 self.run_sensitivity_menu()
+            elif answers.get("Sensitivity") == "View Sensitivity Results":
+                self.view_sensitivity_results_menu()
             elif answers.get("Sensitivity") == "Return":
                 break
 
@@ -863,6 +878,17 @@ class Logic(Questions, Sensitivity):
             print(' ')
             input("Press [Enter] to continue...")
 
+    def view_sensitivity_results_menu(self):
+        if None in self.max_P:
+            print(' ')
+            print('Sensitivity not yet calculted. Run sensitivity and try again')
+            print(' ')
+            input("Press [Enter] to continue...")
+        else:
+            self.stats_sensitivity()
+            print(' ')
+            input("Press [Enter] to continue...")
+
     def run_sensitivity_menu(self):
         if None in [self.VR, self.RD, self.kf]:
             print(' ')
@@ -889,9 +915,19 @@ class Logic(Questions, Sensitivity):
             print('Starting Sensitivity Analysis')
             try:
                 self.sensitivity(scen, self.value, self.ranges)
-                self.plot_sensitivity(self.value, self.ranges)
+                self.stats_sensitivity()
             except:
                 print('Something went wrong, please try again...')
+
+            print(' ')
+            input("Press [Enter] to continue...")
+
+    def stats_sensitivity(self):
+        print(' ')
+        log(str(self.value) + " Sensitivity Summary:", "blue")
+        print(' ')
+        self.table_sensitivity(self.value, self.ranges)
+        self.plot_sensitivity(self.value, self.ranges)
 
 class Menu(Logic):
     def __init__(self):
