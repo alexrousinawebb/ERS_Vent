@@ -2,6 +2,10 @@ from __future__ import print_function, unicode_literals
 
 import ODE
 from Scenario import Scenario
+
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import click
 import six
@@ -62,6 +66,67 @@ class Num_Validator(Validator):
                 message="You can't leave this blank",
                 cursor_position=len(value.text))
 
+class Sensitivity():
+    def sensitivity(self, scenario, value, ranges):
+        for i in tqdm(ranges):
+            if value == "Rupture Disc Diameter":
+                scenario.D_RD = i
+            elif value == "Rupture Disc Burst Pressure":
+                scenario.P_RD = i
+                input('press a thing')
+            elif value == "Backpressure Regulator Set-Point":
+                scenario.P_BPR = i
+            elif value == "Hydrogen Peroxide Concentration":
+                scenario.XH2O2 = i/100
+            elif value == "Reactor Charge":
+                scenario.mR = i
+            elif value == "Contamination Factor":
+                scenario.kf = i
+            elif value == "Reaction Temperature":
+                scenario.rxn_temp = i
+
+            ode1 = ODE.ODE(scenario)
+            ode1.initialize_heatup()
+            ode1.integrate()
+
+            if scenario.RD is True and ode1.tc == 1:
+                ode1.initialize_vent(integrator='vode')
+                ode1.integrate()
+
+            self.max_P.append(ode1.max_P())
+            self.max_T.append(ode1.max_T())
+            self.max_conversion.append(ode1.max_conversion())
+            self.max_vent.append(ode1.max_conversion())
+
+    def plot_sensitivity(self, value, ranges):
+        plt.figure(1, figsize=(10, 10))
+
+        plt.subplot(2, 2, 1)
+        plt.plot(ranges, self.max_P, color='r')
+        plt.xlabel(str(value))
+        plt.ylabel('Pressure (kPa)')
+        plt.title("Maximum Reactor Pressure")
+
+        plt.subplot(2, 2, 2)
+        plt.plot(ranges, self.max_T, color='r')
+        plt.xlabel(str(value))
+        plt.ylabel('Temperature (deg C)')
+        plt.title("Maximum Reactor Temperature")
+
+        plt.subplot(2, 2, 3)
+        plt.plot(ranges, self.max_conversion, color='r')
+        plt.xlabel(str(value))
+        plt.ylabel('Conversion (%)')
+        plt.title("Maximum Reactor Conversion")
+
+        plt.subplot(2, 2, 4)
+        plt.plot(ranges, self.max_vent, color='r')
+        plt.xlabel(str(value))
+        plt.ylabel('Flow Rate (mol/s)')
+        plt.title("Maximum Vent Flow")
+
+        plt.show()
+
 class Questions():
     def greeting(self):
         log("ERS Vent", color="blue", figlet=True)
@@ -97,7 +162,9 @@ class Questions():
                 'type': 'list',
                 'name': 'New Scenario',
                 'message': 'New Scenario',
-                'choices': ['Model Scenario', 'RD/PRV Sizing', 'Sensitivity Analysis', 'Return'],
+                'choices': [
+                            'Model Scenario', 'RD/PRV Sizing', 'Sensitivity Analysis', 'Return'
+                ],
             },
         ]
         answers = prompt(questions, style=style)
@@ -163,7 +230,6 @@ class Questions():
             },
         ]
         answers = prompt(questions, style=style)
-
         return answers
 
     def setup_ers_menu_bpr_q(self):
@@ -359,7 +425,59 @@ class Questions():
         answers = prompt(questions, style=style)
         return answers
 
-class Logic(Questions):
+    def new_scenario_sensitivity_menu_q(self):
+        questions = [
+            {
+                'type': 'list',
+                'name': 'Sensitivity',
+                'message': 'Sensitivity Analysis Menu',
+                'choices': ['Configure Sensitivity', 'Configure Scenario', 'View Sensitivity Settings',
+                            'View Scenario Settings', 'Run Sensitivity', 'Return'],
+            },
+        ]
+        answers = prompt(questions, style=style)
+        return answers
+
+    def setup_scenario_sensitivity_config_q(self):
+        questions = [
+            {
+                'type': 'input',
+                'name': 'min',
+                'message': 'Minimum Value:',
+                'validate': Num_Validator,
+            },
+            {
+                'type': 'input',
+                'name': 'max',
+                'message': 'Maximum Value:',
+                'validate': Num_Validator,
+            },
+            {
+                'type': 'input',
+                'name': 'range',
+                'message': 'Number of Data Points for Analysis:',
+                'validate': Num_Validator,
+            },
+        ]
+        answers = prompt(questions, style=style)
+        return answers
+
+    def setup_scenario_sensitivity_menu_q(self):
+        questions = [
+            {
+                'type': 'list',
+                'name': 'Sensitivity',
+                'message': 'Select Factor for Sensitivity Analysis:',
+                'choices': [
+                    'Rupture Disc Diameter', 'Rupture Disc Burst Pressure', 'Backpressure Regulator Set-Point',
+                    'Hydrogen Peroxide Concentration', 'Reactor Charge', 'Contamination Factor', 'Reaction Temperature'
+                ],
+            },
+        ]
+        answers = prompt(questions, style=style)
+        return answers
+
+class Logic(Questions, Sensitivity):
 
     def root_menu(self):
         while True:
@@ -388,7 +506,7 @@ class Logic(Questions):
             elif answers.get("New Scenario") == "RD/PRV Sizing":
                 self.not_implemented()
             elif answers.get("New Scenario") == "Sensitivity Analysis":
-                self.not_implemented()
+                self.new_scenario_sensitivity_menu()
             elif answers.get("New Scenario") == "Return":
                 break
 
@@ -641,23 +759,139 @@ class Logic(Questions):
                  self.TF
                  )
 
-            print('Scenario successfully generated...')
-            print(' ')
-
             ode1 = ODE.ODE(scen)
             ode1.initialize_heatup()
 
-            print('Initializing Heatup...')
+            print('Integrating Heatup...')
             print(' ')
-            ode1.integrate(plot_rt)
 
-            if self.RD is True:
-                print('Initializing ERS...')
+            ode1.integrate(plot_rt)
+            tc = ode1.termination_code()
+
+            print(' ')
+            print(tc)
+            print(' ')
+
+            if self.RD is True and ode1.tc == 1:
+                print('Integrating ERS...')
                 print(' ')
+
                 ode1.initialize_vent(integrator='vode')
                 ode1.integrate(plot_rt)
+                tc = ode1.termination_code()
 
-            ode1.plot_vals()
+                print(' ')
+                print(tc)
+                print(' ')
+
+            self.summary_stats_menu(ode1)
+
+    def summary_stats_menu(self, ode):
+        max_P = ode.max_P()
+        max_T = ode.max_T()
+        max_conversion = ode.max_conversion()
+
+        print(' ')
+        log('Run Statistics:', 'blue')
+        print('Maximum Pressure:  ' + str(round(max_P, 2)) + ' kPa')
+        print('Maximum Temperature:  ' + str(round(max_T, 2)) + ' deg C')
+        print('Maximum Conversion:  ' + str(round(max_conversion, 2)) + ' %')
+
+        if (self.RD is True) or (self.BPR is True):
+            max_vent = ode.max_vent()
+            print('Maximum Vent Flowrate:  ' + str(round(max_vent, 4)) + ' mol/s')
+
+            if self.TF is True:
+                min_quality = ode.min_quality()
+                print('Minimum Vent Quality:  ' + str(round(min_quality, 4)))
+
+        ode.plot_vals()
+        input("Press [Enter] to continue...")
+
+    def new_scenario_sensitivity_menu(self):
+        while True:
+            os.system('cls')
+            self.greeting()
+
+            answers = self.new_scenario_sensitivity_menu_q()
+            if answers.get("Sensitivity") == "Configure Sensitivity":
+                self.setup_scenario_sensitivity_menu()
+            elif answers.get("Sensitivity") == "Configure Scenario":
+                self.config_scenario_menu()
+            elif answers.get("Sensitivity") == "View Sensitivity Settings":
+                self.view_sensitivity_menu()
+            elif answers.get("Sensitivity") == "View Scenario Settings":
+                self.view_scenario_menu()
+            elif answers.get("Sensitivity") == "Run Sensitivity":
+                self.run_sensitivity_menu()
+            elif answers.get("Sensitivity") == "Return":
+                break
+
+    def setup_scenario_sensitivity_menu(self):
+        os.system('cls')
+        self.greeting()
+
+        answers = self.setup_scenario_sensitivity_menu_q()
+        self.value = answers.get("Sensitivity")
+        self.setup_scenario_sensitivity_config()
+
+    def setup_scenario_sensitivity_config(self):
+        os.system('cls')
+        self.greeting()
+
+        print(' ')
+        log(str(self.value), "blue")
+        answers = self.setup_scenario_sensitivity_config_q()
+        min = float(answers.get("min"))
+        max = float(answers.get("max"))
+        span = int(answers.get("range"))
+
+        self.ranges = np.linspace(min, max, span)
+
+    def view_sensitivity_menu(self):
+        if None in [self.value]:
+            print(' ')
+            print('Sensitivity not specified. Update sensitivity configuration and try again')
+            print(' ')
+            input("Press [Enter] to continue...")
+
+        else:
+            print(' ')
+            log(str(self.value) + " Sensitivity Chosen", "blue")
+            print('Minimum Value:  ' + str(self.ranges[0]))
+            print('Maximum Value:  ' + str(self.ranges[-1]))
+            print(' ')
+            input("Press [Enter] to continue...")
+
+    def run_sensitivity_menu(self):
+        if None in [self.VR, self.RD, self.kf]:
+            print(' ')
+            print('Scenario not fully specified. Update scenario configuration and try again')
+            print(' ')
+            input("Press [Enter] to continue...")
+
+        elif None in [self.value]:
+            print(' ')
+            print('Sensitivity not specified. Update sensitivity configuration and try again')
+            print(' ')
+            input("Press [Enter] to continue...")
+
+        else:
+            scen = Scenario(
+                 self.VR, self.rxn_temp, self.rxn_time, self.XH2O2, self.mR, self.D_RD,
+                 self.P_RD, self.P_BPR, self.D_BPR, self.BPR_max_Cv, self.P0, self.kf, self.T0,
+                 self.Ux, self.AR, self.MAWP, self.max_rate,
+                 self.Kp, self.Ki, self.Kd, self.flow_regime, self.BPR, self.RD, self.cool_time,
+                 self.TF
+                 )
+
+            print(' ')
+            print('Starting Sensitivity Analysis')
+            try:
+                self.sensitivity(scen, self.value, self.ranges)
+                self.plot_sensitivity(self.value, self.ranges)
+            except:
+                print('Something went wrong, please try again...')
 
 class Menu(Logic):
     def __init__(self):
@@ -706,10 +940,17 @@ class Menu(Logic):
         self.Kd = 0
         self.Ki = 0
 
+        self.max_P = []
+        self.max_T = []
+        self.max_conversion = []
+        self.max_vent = []
 
+        #  Sensitivity Analysis
+        self.value = None
+        self.ranges = None
 
+        #  Run main program
         self.root_menu()
-
 
 @click.command()
 def main():

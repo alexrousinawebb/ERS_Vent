@@ -7,7 +7,6 @@ Module containing reactor system ODEs for solving.
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import integrate as integ
-from scipy import optimize as opt
 from tqdm import tqdm
 
 from simple_pid import PID
@@ -21,6 +20,18 @@ from Conversion import c2k, A_wet, cv2kd
 class Stats:
     def max_P(self):
         return np.max([i[4] for i in self.data[4]])
+
+    def max_T(self):
+        return np.max([i[0] for i in self.data[0]])
+
+    def max_vent(self):
+        return np.max([i[0] for i in self.data[5]])
+
+    def min_quality(self):
+        return np.min([i[1] for i in self.data[5]])
+
+    def max_conversion(self):
+        return ((self.data[0][0][3] - self.data[0][-1][3]) / self.data[0][0][3])*100
 
 class ODE(Stats, ERS.ERS):
     def __init__(self, scen):
@@ -54,6 +65,7 @@ class ODE(Stats, ERS.ERS):
         self.t = None
         self.plot_freq = None
         self.N = None
+        self.tc = None
 
         self.tmax = (self.scenario.rxn_time + self.scenario.cool_time) * 60 * 60
 
@@ -63,6 +75,7 @@ class ODE(Stats, ERS.ERS):
         self.H2O2 = pl.Hydrogen_Peroxide(self.scenario.T0, ic.P, ic)
         self.O2 = pl.Oxygen(self.scenario.T0, ic.P, ic)
         self.cp = pl.Common_Properties(self.scenario.T0, ic, self.H2O, self.H2O2, self.O2)
+        self.aux = pl.Aux_Properties(self.n_vent, self.xe)
 
     def initialize_heatup(self, integrator='lsoda'):
         """
@@ -78,7 +91,7 @@ class ODE(Stats, ERS.ERS):
         # Generate data storage list of arrays
         self.data = [np.zeros((self.N, len(Y0))), np.zeros((self.N, len(vars(self.H2O)))),
                      np.zeros((self.N, len(vars(self.H2O2)))), np.zeros((self.N, len(vars(self.O2)))),
-                     np.zeros((self.N, len(vars(self.cp))))]
+                     np.zeros((self.N, len(vars(self.cp)))), np.zeros((self.N, len(vars(self.aux))))]
 
         #  Write initial conditions to data storage array
         self.store_data(0)
@@ -109,7 +122,7 @@ class ODE(Stats, ERS.ERS):
         #  Configure ODE solver
         Y0 = [self.data[0][self.i - 1, :]]
         self.solver = integ.ode(self.rxn_vent_ode)
-        self.solver.set_integrator(integrator, max_step=0.01)
+        self.solver.set_integrator(integrator, max_step=0.001)
         self.solver.set_initial_value(Y0[0].tolist(), self.t[self.i - 1])
 
         self.venting = True
@@ -120,6 +133,7 @@ class ODE(Stats, ERS.ERS):
             Integrates ODEs for reactor heatup.
         """
 
+        self.tc = None
         k = self.i
 
         with tqdm(total=self.N) as pbar:
@@ -128,10 +142,18 @@ class ODE(Stats, ERS.ERS):
                 if self.t[k] / 3600 >= self.scenario.rxn_time:
                     self.pid_jacket.setpoint = self.scenario.T0
 
-                if self.venting is False and self.cp.P >= self.scenario.P_RD:
+                #  Termination Conditions
+                if (self.scenario.RD is True) and (self.venting is False) and (self.cp.P >= self.scenario.P_RD):
+                    self.tc = 1
                     break
-
-                if self.venting is True and (self.cp.P >= self.scenario.MAWP or self.cp.VL <= 0 or self.cp.P <= cc.Patm):
+                elif self.cp.P >= self.scenario.MAWP:
+                    self.tc = 2
+                    break
+                elif self.cp.VL <= 0:
+                    self.tc = 3
+                    break
+                elif (self.scenario.RD is True) and (self.venting is True) and (self.cp.P < cc.Patm):
+                    self.tc = 4
                     break
 
                 self.ramp_rate = self.pid_jacket(self.data[0][k - 1, 0])
@@ -198,6 +220,7 @@ class ODE(Stats, ERS.ERS):
 
         #  Calculate vent flow rate
         self.vent_calc(T)
+        self.aux = pl.Aux_Properties(self.n_vent, self.xe)
 
         #  Differential equations for change in molar amount of components (mol/s)
         dnH2O_dt = kin.rate * nH2O2 - (self.H2O.y * self.xe + self.H2O.x * (1 - self.xe)) * self.n_vent
@@ -230,7 +253,7 @@ class ODE(Stats, ERS.ERS):
         """
             Store integration data into previously initialized data array.
         """
-        property_master = [self.H2O, self.H2O2, self.O2, self.cp]
+        property_master = [self.H2O, self.H2O2, self.O2, self.cp, self.aux]
 
         temp_data = []
 
@@ -284,7 +307,6 @@ class ODE(Stats, ERS.ERS):
         plt.ylabel('Volume (L)')
         plt.title("Reactor Volume")
         plt.legend(['Liquid', 'Headspace'])
-
 
         plt.subplot(2, 3, 5)
         plt.scatter(k, self.n_vent, color='r', s=1)
@@ -343,6 +365,18 @@ class ODE(Stats, ERS.ERS):
         plt.title("Reactor Volume")
         plt.legend(['Liquid', 'Headspace'])
 
+        plt.subplot(2, 3, 5)
+        plt.plot([i[0] for i in self.data[5]], color='r')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Flow Rate (mol/s)')
+        plt.title("Vent Flow")
+
+        plt.subplot(2, 3, 6)
+        plt.plot([i[1] for i in self.data[5]], color='b')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Quality')
+        plt.title("Quality")
+
         plt.show()
 
     def pid_config(self):
@@ -358,49 +392,64 @@ class ODE(Stats, ERS.ERS):
         """
             Calculate reactor vent (BPR/RD/PRV) flow for various scenarios.
         """
+        if self.scenario.RD is True:
+            if self.venting is True:
+                self.crit_flow(cc.Patm)
+                self.ventflow(T, cc.Patm, self.scenario.D_RD, cc.RD_Kd)
 
-        if self.venting is True and self.scenario.RD is True:
-            self.crit_flow(cc.Patm)
-            self.ventflow(T, cc.Patm, self.scenario.D_RD, cc.RD_Kd)
+                if self.scenario.TF_vent is True:
+                    self.two_phase()
 
-            if self.scenario.TF_vent is True:
-                self.two_phase()
+                    if self.TF is False:
+                        self.n_vent = self.n_vent_vap
+                        self.xe = 1
+                    elif self.TF is True:
+                        self.flow_twophase(cc.Patm)
 
-                if self.TF is False:
+                elif self.scenario.TF_vent is False:
                     self.n_vent = self.n_vent_vap
                     self.xe = 1
-                elif self.TF is True:
-                    self.flow_twophase(cc.Patm)
 
-            elif self.scenario.TF_vent is False:
+            elif self.scenario.BPR is True and self.scenario.P_RD > self.cp.P > self.scenario.P_BPR:
+                # self.crit_flow(self.scenario.P_BPR)
+                self.critical_flow = False
+                self.ventflow(T, self.scenario.P_BPR, self.scenario.D_BPR,
+                              cv2kd(self.scenario.BPR_max_Cv, self.scenario.D_BPR))
                 self.n_vent = self.n_vent_vap
                 self.xe = 1
 
-        elif self.scenario.BPR is True and self.scenario.P_RD > self.cp.P > self.scenario.P_BPR:
-            # self.crit_flow(self.scenario.P_BPR)
-            self.critical_flow = False
-            self.ventflow(T, self.scenario.P_BPR, self.scenario.D_BPR,
-                          cv2kd(self.scenario.BPR_max_Cv, self.scenario.D_BPR))
-            self.n_vent = self.n_vent_vap
-            self.xe = 1
+            else:
+                self.n_vent = 0
+                self.xe = 1
 
+        elif self.scenario.RD is False:
+            if self.scenario.BPR is True and self.cp.P > self.scenario.P_BPR:
+                # self.crit_flow(self.scenario.P_BPR)
+                self.critical_flow = False
+                self.ventflow(T, self.scenario.P_BPR, self.scenario.D_BPR,
+                              cv2kd(self.scenario.BPR_max_Cv, self.scenario.D_BPR))
+                self.n_vent = self.n_vent_vap
+                self.xe = 1
+
+            else:
+                self.n_vent = 0
+                self.xe = 1
+
+    def termination_code(self):
+        if self.tc == 1:
+            pcode = "Process Finished Successfully (Rupture disc burst)"
+        elif self.tc == 2:
+            pcode = "Process Finished Prematurely (Vessel pressure exceeds maximum allowable working pressure)"
+        elif self.tc == 3:
+            pcode = "Process Finished Prematurely (Vessel has been fully emptied)"
+        elif self.tc == 4:
+            pcode = "Process Finished Successfully (Vessel vented successfully)"
+        elif self.tc is None:
+            if self.t[-1] == self.tmax:
+                pcode = "Process Finished Successfully (Maximum reaction time reached)"
+            else:
+                pcode = "Integration Exited Early (See error code)"
         else:
-            self.n_vent = 0
-            self.xe = 1
+            pcode = "Unknown error"
 
-class Prog(ODE):
-    def __init__(self, scen):
-        ODE.__init__(self, scen)
-
-    def run(self, D_RD):
-        self.scenario.D_RD = D_RD
-        ode1 = ODE(self.scenario)
-        ode1.initialize_heatup()
-        ode1.integrate(plot_rt=True)
-        ode1.initialize_vent()
-        ode1.integrate(plot_rt=False)
-
-        return self.max_P() - self.scenario.P_RD
-
-    def vent_opt(self):
-        return opt.newton(self.run, self.scenario.D_RD)
+        return pcode

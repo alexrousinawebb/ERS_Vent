@@ -555,3 +555,16 @@ class Kinetics():
 
     def kinetics(self, T, kf):
         self.rate = cc.A_ar * kf * np.exp(-cc.Ea / c2k(T))
+
+class Aux_Properties():
+    def __init__(self, n_vent, xe):
+        """
+            Initializes storage container for auxilliary properties.
+
+            Arguments:
+            n_vent:        Vent flow rate in (mol/s)
+            xe:            Vent quality
+        """
+
+        self.n_vent = n_vent
+        self.xe = xe
