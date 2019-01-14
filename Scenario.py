@@ -5,7 +5,9 @@ Module initiates and stores a valid ERS scenario.
 """
 
 import numpy as np
+
 from Conversion import g2l
+
 
 class Scenario():
     def __init__(self,

@@ -1,18 +1,21 @@
 from __future__ import print_function, unicode_literals
 
-import ODE
-from Scenario import Scenario
+import os
+import string
 
-from tqdm import tqdm
+import click
+import dill
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-import click
 import six
-from pyfiglet import figlet_format
-from prettytable import PrettyTable
 from PyInquirer import (Token, ValidationError, Validator,
                         style_from_dict, prompt)
+from prettytable import PrettyTable
+from pyfiglet import figlet_format
+from tqdm import tqdm
+
+import ODE
+from Scenario import Scenario
 
 try:
     import colorama
@@ -62,6 +65,26 @@ class Num_Validator(Validator):
                 raise ValidationError(
                     message="Input must be positive",
                     cursor_position=len(value.text))
+        else:
+            raise ValidationError(
+                message="You can't leave this blank",
+                cursor_position=len(value.text))
+
+class Name_Validator(Validator):
+    def validate(self, value):
+        invalidChars = set(string.punctuation.replace("_", ""))
+        if len(value.text):
+            if any(char in invalidChars for char in value.text):
+                raise ValidationError(
+                    message="Input cannot contain special characters",
+                    cursor_position=len(value.text))
+            else:
+                if ' ' in value.text:
+                    raise ValidationError(
+                        message="Input cannot contain spaces",
+                        cursor_position=len(value.text))
+                else:
+                    return True
         else:
             raise ValidationError(
                 message="You can't leave this blank",
@@ -138,7 +161,6 @@ class Sensitivity():
         t.add_column(column_names[4], [round(i, 2) for i in self.max_vent])
         print(t)
 
-
 class Questions():
     def greeting(self):
         log("ERS Vent", color="blue", figlet=True)
@@ -173,7 +195,7 @@ class Questions():
             {
                 'type': 'list',
                 'name': 'New Scenario',
-                'message': 'New Scenario',
+                'message': 'New Scenario: ' + str(self.name),
                 'choices': [
                             'Model Scenario', 'RD/PRV Sizing', 'Sensitivity Analysis', 'Return'
                 ],
@@ -187,8 +209,9 @@ class Questions():
             {
                 'type': 'list',
                 'name': 'Scenario',
-                'message': 'Scenario Menu:',
-                'choices': ['Configure Scenario', 'View Scenario Settings', 'Run Scenario', 'Return'],
+                'message': str(self.name) + ' Scenario Menu:',
+                'choices': ['Configure Scenario', 'View Scenario Settings', 'Run Scenario', 'View Scenario Results',
+                            'Save Data', 'Return'],
             },
         ]
         answers = prompt(questions, style=style)
@@ -199,7 +222,7 @@ class Questions():
             {
                 'type': 'list',
                 'name': 'Scenario Setup',
-                'message': 'Scenario Configuration:',
+                'message': str(self.name) +' Scenario Configuration:',
                 'choices': ['ERS Settings', 'Vessel Settings', 'Reaction Settings',
                             'PID Controller Settings (Optional)', 'Return'],
             },
@@ -442,9 +465,9 @@ class Questions():
             {
                 'type': 'list',
                 'name': 'Sensitivity',
-                'message': 'Sensitivity Analysis Menu',
+                'message': str(self.name) + ' Sensitivity Analysis Menu',
                 'choices': ['Configure Sensitivity', 'Configure Scenario', 'View Sensitivity Settings',
-                            'View Scenario Settings', 'Run Sensitivity', 'View Sensitivity Results',
+                            'View Scenario Settings', 'Run Sensitivity', 'View Sensitivity Results', 'Save Data',
                             'Return'],
             },
         ]
@@ -490,6 +513,30 @@ class Questions():
         answers = prompt(questions, style=style)
         return answers
 
+    def input_scenario_name_q(self):
+        questions = [
+            {
+                'type': 'input',
+                'name': 'scenario_name',
+                'message': 'Input a name for this scenario:',
+                'validate': Name_Validator,
+            },
+        ]
+        answers = prompt(questions, style=style)
+        return answers
+
+    def load_data_q(self, files):
+        questions = [
+            {
+                'type': 'list',
+                'name': 'files',
+                'message': 'Select data file to load:',
+                'choices': files,
+            },
+        ]
+        answers = prompt(questions, style=style)
+        return answers
+
 class Logic(Questions, Sensitivity):
 
     def root_menu(self):
@@ -499,9 +546,10 @@ class Logic(Questions, Sensitivity):
 
             answers = self.root_menu_q()
             if answers.get("Main Menu") == "New Scenario":
+                self.input_scenario_name()
                 self.new_scenario_menu()
             elif answers.get("Main Menu") == "Load Scenario":
-                self.not_implemented()
+                self.load_data()
             elif answers.get("Main Menu") == "Information":
                 self.information()
             elif answers.get("Main Menu") == "Exit":
@@ -535,6 +583,10 @@ class Logic(Questions, Sensitivity):
                 self.view_scenario_menu()
             elif answers.get("Scenario") == "Run Scenario":
                 self.run_scenario_menu()
+            elif answers.get("Scenario") == "View Scenario Results":
+                self.summary_stats_menu()
+            elif answers.get("Scenario") == "Save Data":
+                self.save_data()
             elif answers.get("Scenario") == "Return":
                 break
 
@@ -748,6 +800,7 @@ class Logic(Questions, Sensitivity):
             input("Press [Enter] to continue...")
 
         else:
+            print('Scenario stats for ' + str(self.name))
             self.ers_stats()
             self.vessel_stats()
             self.rxn_stats()
@@ -797,29 +850,36 @@ class Logic(Questions, Sensitivity):
                 print(tc)
                 print(' ')
 
-            self.summary_stats_menu(ode1)
+            self.ode = ode1
+            self.summary_stats_menu()
 
-    def summary_stats_menu(self, ode):
-        max_P = ode.max_P()
-        max_T = ode.max_T()
-        max_conversion = ode.max_conversion()
+    def summary_stats_menu(self):
+        if self.ode is None:
+            print(' ')
+            print('No data to display.')
+            print(' ')
+            input("Press [Enter] to continue...")
+        else:
+            max_P = self.ode.max_P()
+            max_T = self.ode.max_T()
+            max_conversion = self.ode.max_conversion()
 
-        print(' ')
-        log('Run Statistics:', 'blue')
-        print('Maximum Pressure:  ' + str(round(max_P, 2)) + ' kPa')
-        print('Maximum Temperature:  ' + str(round(max_T, 2)) + ' deg C')
-        print('Maximum Conversion:  ' + str(round(max_conversion, 2)) + ' %')
+            print(' ')
+            log('Run Statistics:', 'blue')
+            print('Maximum Pressure:  ' + str(round(max_P, 2)) + ' kPa')
+            print('Maximum Temperature:  ' + str(round(max_T, 2)) + ' deg C')
+            print('Maximum Conversion:  ' + str(round(max_conversion, 2)) + ' %')
 
-        if (self.RD is True) or (self.BPR is True):
-            max_vent = ode.max_vent()
-            print('Maximum Vent Flowrate:  ' + str(round(max_vent, 4)) + ' mol/s')
+            if (self.RD is True) or (self.BPR is True):
+                max_vent = self.ode.max_vent()
+                print('Maximum Vent Flowrate:  ' + str(round(max_vent, 4)) + ' mol/s')
 
-            if self.TF is True:
-                min_quality = ode.min_quality()
-                print('Minimum Vent Quality:  ' + str(round(min_quality, 4)))
+                if self.TF is True:
+                    min_quality = self.ode.min_quality()
+                    print('Minimum Vent Quality:  ' + str(round(min_quality, 4)))
 
-        ode.plot_vals()
-        input("Press [Enter] to continue...")
+            self.ode.plot_vals()
+            input("Press [Enter] to continue...")
 
     def new_scenario_sensitivity_menu(self):
         while True:
@@ -839,6 +899,8 @@ class Logic(Questions, Sensitivity):
                 self.run_sensitivity_menu()
             elif answers.get("Sensitivity") == "View Sensitivity Results":
                 self.view_sensitivity_results_menu()
+            elif answers.get("Sensitivity") == "Save Data":
+                self.save_data()
             elif answers.get("Sensitivity") == "Return":
                 break
 
@@ -879,7 +941,7 @@ class Logic(Questions, Sensitivity):
             input("Press [Enter] to continue...")
 
     def view_sensitivity_results_menu(self):
-        if None in self.max_P:
+        if len(self.max_P) == 0:
             print(' ')
             print('Sensitivity not yet calculted. Run sensitivity and try again')
             print(' ')
@@ -912,7 +974,7 @@ class Logic(Questions, Sensitivity):
                  )
 
             print(' ')
-            print('Starting Sensitivity Analysis')
+            print('Starting Sensitivity Analysis for ' + str(self.name))
             try:
                 self.sensitivity(scen, self.value, self.ranges)
                 self.stats_sensitivity()
@@ -924,13 +986,63 @@ class Logic(Questions, Sensitivity):
 
     def stats_sensitivity(self):
         print(' ')
-        log(str(self.value) + " Sensitivity Summary:", "blue")
+        log(str(self.name) + " Sensitivity Summary: " + str(self.value), "blue")
         print(' ')
         self.table_sensitivity(self.value, self.ranges)
         self.plot_sensitivity(self.value, self.ranges)
 
+    def save_data(self):
+        if self.ode is None:
+            print(' ')
+            print('Scenario data is incomplete, cannot save.')
+            print(' ')
+            input("Press [Enter] to continue...")
+        else:
+            try:
+                with open(str(self.name)+'.pkl', 'wb') as f:
+                    dill.dump(self.ode, f)
+                print(' ')
+                print('Data saved successfully.')
+                print(' ')
+                input("Press [Enter] to continue...")
+            except:
+                print(' ')
+                print('Something went wrong, please try again.')
+                print(' ')
+                input("Press [Enter] to continue...")
+
+    def load_data(self):
+        directory = [f for f in os.listdir() if f.endswith('.pkl')]
+        if len(directory) == 0:
+            print(' ')
+            print('No data files present in root directory.')
+            print(' ')
+            input("Press [Enter] to continue...")
+        else:
+            answers = self.load_data_q(directory)
+            file_name = answers.get("files")
+            try:
+                with open(file_name, 'rb') as f:
+                    self.ode = dill.load(f)
+                print(' ')
+                print('Session loaded successfully')
+                print(' ')
+                input("Press [Enter] to continue...")
+                self.new_scenario_menu()
+            except:
+                print(' ')
+                print('File could not be loaded.')
+                print(' ')
+                input("Press [Enter] to continue...")
+
+    def input_scenario_name(self):
+        answers = self.input_scenario_name_q()
+        self.name = answers.get("scenario_name")
+
 class Menu(Logic):
     def __init__(self):
+        self.ode = None
+
         #  Reactor Parameters
         self.VR = None
         self.Ux = None
@@ -941,22 +1053,16 @@ class Menu(Logic):
         self.D_RD = None
         self.P_RD = None
 
-        # self.RD_params = [self.D_RD, self.P_RD]
-
         #  BPR Parameters
         self.D_BPR = None
         self.BPR_max_Cv = None
         self.P_BPR = None
-
-        # self.BPR_params = [self.D_BPR, self.BPR_max_Cv, self.P_BPR]
 
         #  ERS Setup
         self.TF = False
         self.RD = None
         self.BPR = None
         self.flow_regime = None
-
-        # self.ERS_params = [self.TF_vent, self.RD, self.BPR, self.flow_regime]
 
         #  Chemical Properties
         self.XH2O2 = None
@@ -976,14 +1082,16 @@ class Menu(Logic):
         self.Kd = 0
         self.Ki = 0
 
+        #  Sensitivity Analysis
+        self.value = None
+        self.ranges = None
         self.max_P = []
         self.max_T = []
         self.max_conversion = []
         self.max_vent = []
 
-        #  Sensitivity Analysis
-        self.value = None
-        self.ranges = None
+        #  Misc
+        self.name = None
 
         #  Run main program
         self.root_menu()
@@ -991,34 +1099,10 @@ class Menu(Logic):
 @click.command()
 def main():
     """
-    Simple CLI for sending emails using SendGrid
+    CLI for ERS Vent
     """
 
     Menu()
 
 if __name__ == '__main__':
     main()
-
-# T_rxn = 110
-# VR = 100
-# XH2O2 = 0.3
-# mR = 304
-# t_rxn = 6
-# D_RD = 6
-# P_RD = 1000
-# P_BPR = 200
-#
-# scen = Scenario(VR, T_rxn, t_rxn, XH2O2, mR, D_RD, P_RD, P_BPR, cooldown_time=2, kf=3000, RD=True, BPR=True,
-#                 TF_vent=True)
-#
-# # optimize = ODE.Prog(scen)
-# # D_RD = optimize.vent_opt()
-# # print(D_RD)
-#
-# ode1 = ODE.ODE(scen)
-# ode1.initialize_heatup()
-# ode1.integrate(plot_rt=False)
-# ode1.initialize_vent(integrator='vode')
-# ode1.integrate(plot_rt=False)
-# print(ode1.max_P())
-# ode1.plot_vals()
