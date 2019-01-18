@@ -35,8 +35,9 @@ class ERS():
 
             C = 520 * np.sqrt(self.cp.k * ((2 / (self.cp.k + 1)) ** ((self.cp.k + 1) / (self.cp.k - 1))))
 
-            self.n_vent_vap = ((A_relief(D) * 1000000 * C * Kd * self.cp.P / 13160) * np.sqrt(
-                Mw / (c2k(T) * Z)) * 1000 / 3600) / Mw
+            self.m_vent_vap = ((A_relief(D) * 1000000 * C * Kd * self.cp.P / 13160) * np.sqrt(
+                Mw / (c2k(T) * Z)) * 1000 / 3600)
+
 
         elif self.critical_flow is False:
 
@@ -45,8 +46,10 @@ class ERS():
             F2 = np.sqrt((self.cp.k / (self.cp.k - 1)) * r ** (2 / self.cp.k) *
                          ((1 - r ** ((self.cp.k - 1) / self.cp.k)) / (1 - r)))
 
-            self.n_vent_vap = (((A_relief(D) * 1000000 * F2 * Kd / 17.9) * np.sqrt(
-                Mw * self.cp.P * (self.cp.P - P_discharge) / (Z * c2k(T)))) * 1000 / 3600) / Mw
+            self.m_vent_vap = (((A_relief(D) * 1000000 * F2 * Kd / 17.9) * np.sqrt(
+                Mw * self.cp.P * (self.cp.P - P_discharge) / (Z * c2k(T)))) * 1000 / 3600)
+
+        self.n_vent_vap = self.m_vent_vap / Mw
 
     def voidfrac(self, z):
 
@@ -135,4 +138,6 @@ class ERS():
                     A_relief(self.scenario.D_RD) * G_twophase - self.jgi * self.pG *
                     A_relief(self.scenario.D * 39.3701))) / (A_relief(self.scenario.D_RD) * G_twophase)
 
-        self.n_vent = G_twophase * cc.RD_Kd * A_relief(self.scenario.D_RD) * 1000 / Mw
+        self.m_vent = G_twophase * cc.RD_Kd * A_relief(self.scenario.D_RD) * 1000
+
+        self.n_vent = self.m_vent / Mw

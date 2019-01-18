@@ -49,6 +49,8 @@ class ODE(Stats, ERS.ERS):
         self.venting = None
         self.n_vent = 0
         self.n_vent_vap = None
+        self.m_vent_vap = None
+        self.m_vent = 0
         self.critical_flow = False
         self.xe = 1
         self.CpG = None
@@ -220,7 +222,7 @@ class ODE(Stats, ERS.ERS):
 
         #  Calculate vent flow rate
         self.vent_calc(T)
-        self.aux = pl.Aux_Properties(self.n_vent, self.xe)
+        self.aux = pl.Aux_Properties(self.m_vent, self.xe)
 
         #  Differential equations for change in molar amount of components (mol/s)
         dnH2O_dt = kin.rate * nH2O2 - (self.H2O.y * self.xe + self.H2O.x * (1 - self.xe)) * self.n_vent
@@ -309,7 +311,7 @@ class ODE(Stats, ERS.ERS):
         plt.legend(['Liquid', 'Headspace'])
 
         plt.subplot(2, 3, 5)
-        plt.scatter(k, self.n_vent, color='r', s=1)
+        plt.scatter(k, self.m_vent, color='r', s=1)
         plt.xlabel('Time (s)')
         plt.ylabel('Flow Rate (mol/s)')
         plt.title("Vent Flow")
@@ -368,7 +370,7 @@ class ODE(Stats, ERS.ERS):
         plt.subplot(2, 3, 5)
         plt.plot([i[0] for i in self.data[5]], color='r')
         plt.xlabel('Time (s)')
-        plt.ylabel('Flow Rate (mol/s)')
+        plt.ylabel('Flow Rate (g/s)')
         plt.title("Vent Flow")
 
         plt.subplot(2, 3, 6)
@@ -402,12 +404,14 @@ class ODE(Stats, ERS.ERS):
 
                     if self.TF is False:
                         self.n_vent = self.n_vent_vap
+                        self.m_vent = self.m_vent_vap
                         self.xe = 1
                     elif self.TF is True:
                         self.flow_twophase(cc.Patm)
 
                 elif self.scenario.TF_vent is False:
                     self.n_vent = self.n_vent_vap
+                    self.m_vent = self.m_vent_vap
                     self.xe = 1
 
             elif self.scenario.BPR is True and self.scenario.P_RD > self.cp.P > self.scenario.P_BPR:
@@ -416,10 +420,12 @@ class ODE(Stats, ERS.ERS):
                 self.ventflow(T, self.scenario.P_BPR, self.scenario.D_BPR,
                               cv2kd(self.scenario.BPR_max_Cv, self.scenario.D_BPR))
                 self.n_vent = self.n_vent_vap
+                self.m_vent = self.m_vent_vap
                 self.xe = 1
 
             else:
                 self.n_vent = 0
+                self.m_vent = 0
                 self.xe = 1
 
         elif self.scenario.RD is False:
@@ -429,10 +435,12 @@ class ODE(Stats, ERS.ERS):
                 self.ventflow(T, self.scenario.P_BPR, self.scenario.D_BPR,
                               cv2kd(self.scenario.BPR_max_Cv, self.scenario.D_BPR))
                 self.n_vent = self.n_vent_vap
+                self.m_vent = self.m_vent_vap
                 self.xe = 1
 
             else:
                 self.n_vent = 0
+                self.m_vent = 0
                 self.xe = 1
 
     def termination_code(self):

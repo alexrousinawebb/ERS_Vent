@@ -503,9 +503,9 @@ class Common_Properties():
 
     def delta_sv_G(self, H2O, H2O2, O2):
 
-        self.dvGdt = cc.R * (1 / (H2O.Z * cc.MH2O * H2O.P)) + (
-                    1 / (H2O2.Z * cc.MH2O2 * H2O2.P)) + (1 / (
-                    O2.Z * cc.MO2 * O2.P))
+        self.dvGdt = 1 / (((H2O.Z * cc.MH2O * H2O.P) + (
+                    H2O2.Z * cc.MH2O2 * H2O2.P) + (
+                    O2.Z * cc.MO2 * O2.P)) / cc.R)
 
     def delta_sv_L(self, T):
         A = 999.83952
@@ -557,7 +557,7 @@ class Kinetics():
         self.rate = cc.A_ar * kf * np.exp(-cc.Ea / c2k(T))
 
 class Aux_Properties():
-    def __init__(self, n_vent, xe):
+    def __init__(self, m_vent, xe):
         """
             Initializes storage container for auxilliary properties.
 
@@ -566,5 +566,5 @@ class Aux_Properties():
             xe:            Vent quality
         """
 
-        self.n_vent = n_vent
+        self.m_vent = m_vent
         self.xe = xe

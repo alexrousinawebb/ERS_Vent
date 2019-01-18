@@ -98,6 +98,11 @@ class Name_Validator(Validator):
 
 class Sensitivity():
     def sensitivity(self, scenario, value, ranges):
+        self.data.max_P = []
+        self.data.max_T = []
+        self.data.max_conversion = []
+        self.data.max_vent = []
+
         for i in tqdm(ranges):
             if value == "Rupture Disc Diameter":
                 scenario.D_RD = i
@@ -125,7 +130,7 @@ class Sensitivity():
             self.data.max_P.append(ode1.max_P())
             self.data.max_T.append(ode1.max_T())
             self.data.max_conversion.append(ode1.max_conversion())
-            self.data.max_vent.append(ode1.max_conversion())
+            self.data.max_vent.append(ode1.max_vent())
 
     def plot_sensitivity(self, value, ranges):
         plt.figure(1, figsize=(10, 10))
@@ -151,7 +156,7 @@ class Sensitivity():
         plt.subplot(2, 2, 4)
         plt.plot(ranges, self.data.max_vent, color='r')
         plt.xlabel(str(value))
-        plt.ylabel('Flow Rate (mol/s)')
+        plt.ylabel('Flow Rate (g/s)')
         plt.title("Maximum Vent Flow")
 
         plt.show()
@@ -159,7 +164,7 @@ class Sensitivity():
     def table_sensitivity(self, value, ranges):
         t = PrettyTable()
         column_names = [str(value), 'Maximum Pressure (kPa)', 'Maximum Temperature (deg C)', 'Maximum Conversion (%)',
-                         'Maximum Vent Flow Rate (mol/s)']
+                         'Maximum Vent Flow Rate (g/s)']
         t.add_column(column_names[0], [round(i, 2) for i in ranges])
         t.add_column(column_names[1], [round(i, 2) for i in self.data.max_P])
         t.add_column(column_names[2], [round(i, 2) for i in self.data.max_T])
@@ -882,7 +887,7 @@ class Runtime(Questions, Sensitivity):
 
             if (self.data.RD is True) or (self.data.BPR is True):
                 max_vent = self.data.ode.max_vent()
-                print('Maximum Vent Flowrate:  ' + str(round(max_vent, 4)) + ' mol/s')
+                print('Maximum Vent Flowrate:  ' + str(round(max_vent, 4)) + ' g/s')
 
                 if self.data.TF is True:
                     min_quality = self.data.ode.min_quality()
