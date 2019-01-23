@@ -312,8 +312,10 @@ class ODE(Stats, ERS.ERS):
 
         plt.subplot(2, 3, 5)
         plt.scatter(k, self.m_vent, color='r', s=1)
+        plt.scatter(k, self.n_vent*self.O2.y*cc.MO2, color='b', s=1)
         plt.xlabel('Time (s)')
-        plt.ylabel('Flow Rate (mol/s)')
+        plt.ylabel('Flow Rate (g/s)')
+        plt.legend(['Total', 'Oxygen'])
         plt.title("Vent Flow")
 
         plt.subplot(2, 3, 6)

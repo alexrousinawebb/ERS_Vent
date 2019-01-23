@@ -119,18 +119,19 @@ class Sensitivity():
             elif value == "Reaction Temperature":
                 scenario.rxn_temp = i
 
-            ode1 = ODE.ODE(scenario)
-            ode1.initialize_heatup()
-            ode1.integrate()
+            ode = ODE.ODE(scenario)
+            ode.initialize_heatup()
+            ode.integrate()
+            tc = ode.termination_code()
 
-            if scenario.RD is True and ode1.tc == 1:
-                ode1.initialize_vent(integrator='vode')
-                ode1.integrate()
+            # if self.data.RD is True and tc == "Process Finished Successfully (Rupture disc burst)":
+            ode.initialize_vent(integrator='vode')
+            ode.integrate()
 
-            self.data.max_P.append(ode1.max_P())
-            self.data.max_T.append(ode1.max_T())
-            self.data.max_conversion.append(ode1.max_conversion())
-            self.data.max_vent.append(ode1.max_vent())
+            self.data.max_P.append(ode.max_P())
+            self.data.max_T.append(ode.max_T())
+            self.data.max_conversion.append(ode.max_conversion())
+            self.data.max_vent.append(ode.max_vent())
 
     def plot_sensitivity(self, value, ranges):
         plt.figure(1, figsize=(10, 10))
@@ -171,6 +172,8 @@ class Sensitivity():
         t.add_column(column_names[3], [round(i, 2) for i in self.data.max_conversion])
         t.add_column(column_names[4], [round(i, 2) for i in self.data.max_vent])
         print(t)
+
+
 
 class Questions():
     def greeting(self):
